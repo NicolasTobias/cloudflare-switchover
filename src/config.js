@@ -33,6 +33,7 @@ function loadConfig() {
     pollInterval: parseInt(process.env.POLL_INTERVAL, 10) || 300_000,
     telegramBotToken: process.env.TELEGRAM_BOT_TOKEN || null,
     telegramChatId: process.env.TELEGRAM_CHAT_ID || null,
+    telegramThreadId: process.env.TELEGRAM_THREAD_ID ? parseInt(process.env.TELEGRAM_THREAD_ID, 10) : null,
     slackWebhookUrl: process.env.SLACK_WEBHOOK_URL || null,
     hayahoraUrl: process.env.HAYAHORA_URL || 'https://hayahora.futbol/estado/data.json',
     healthCheckPort: parseInt(process.env.HEALTH_CHECK_PORT, 10) || 8080,

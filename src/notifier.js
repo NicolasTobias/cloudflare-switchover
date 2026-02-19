@@ -1,11 +1,13 @@
 'use strict';
 
-async function sendTelegram(token, chatId, message) {
+async function sendTelegram(token, chatId, message, threadId) {
   const url = `https://api.telegram.org/bot${token}/sendMessage`;
+  const payload = { chat_id: chatId, text: message, parse_mode: 'HTML' };
+  if (threadId) payload.message_thread_id = threadId;
   const res = await fetch(url, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ chat_id: chatId, text: message, parse_mode: 'HTML' }),
+    body: JSON.stringify(payload),
   });
   if (!res.ok) {
     const body = await res.text();
@@ -30,7 +32,7 @@ async function notify(config, message, log) {
 
   if (config.telegramBotToken && config.telegramChatId) {
     promises.push(
-      sendTelegram(config.telegramBotToken, config.telegramChatId, message)
+      sendTelegram(config.telegramBotToken, config.telegramChatId, message, config.telegramThreadId)
         .catch(err => log.error({ err }, 'telegram_notification_failed'))
     );
   }

@@ -54,6 +54,7 @@ cp .env.example .env
 | `FOOTBALL_THRESHOLD` | No | `0.5` | Proporción mínima de ISPs con bloqueo para activar el switch |
 | `TELEGRAM_BOT_TOKEN` | No | — | Token del bot de Telegram para notificaciones |
 | `TELEGRAM_CHAT_ID` | No | — | Chat ID de Telegram donde enviar notificaciones |
+| `TELEGRAM_THREAD_ID` | No | — | Thread ID para enviar al topic de un supergrupo |
 | `SLACK_WEBHOOK_URL` | No | — | Webhook de Slack para notificaciones |
 | `LOG_LEVEL` | No | `info` | Nivel de log de Pino (`debug`, `info`, `warn`, `error`) |
 
