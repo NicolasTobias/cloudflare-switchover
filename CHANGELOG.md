@@ -1,3 +1,10 @@
+## [1.0.1](https://github.com/NicolasTobias/cloudflare-switchover/compare/v1.0.0...v1.0.1) (2026-02-19)
+
+
+### Bug Fixes
+
+* **k8s:** deploy to monitoring namespace ([b8102a7](https://github.com/NicolasTobias/cloudflare-switchover/commit/b8102a7de5367d10edd7c566bd35bf9d8e453b26))
+
 # 1.0.0 (2026-02-19)
 
 
