@@ -1,0 +1,97 @@
+# ===========================================================
+# Copiar este archivo a domains.conf y ajustar los valores.
+# Agregar un bloque server{} por cada dominio a proxear.
+#
+# Prerequisito en Cloudflare:
+#   Crear un subdominio origin.DOMINIO que apunte al tunnel
+#   (CNAME → xxx.cfargotunnel.com, proxied=ON).
+#   Este subdominio NO debe ser modificado por el switchover service.
+#   nginx lo usa como upstream para llegar al backend via Cloudflare.
+# ===========================================================
+
+# --- tardigram.com -----------------------------------------------------------
+#
+# Flujo:  Cliente → VPS (nginx) → origin.tardigram.com (CF edge) → Argo Tunnel → Backend
+#         HTTPS end-to-end: Let's Encrypt en nginx, cert público de CF en el edge.
+
+server {
+    listen 80;
+    server_name tardigram.com www.tardigram.com;
+
+    location /.well-known/acme-challenge/ {
+        root /var/www/certbot;
+    }
+
+    location / {
+        return 301 https://$host$request_uri;
+    }
+}
+
+server {
+    listen 443 ssl;
+    server_name tardigram.com www.tardigram.com;
+
+    ssl_certificate     /etc/letsencrypt/live/tardigram.com/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/tardigram.com/privkey.pem;
+    ssl_protocols TLSv1.2 TLSv1.3;
+    ssl_ciphers HIGH:!aNULL:!MD5;
+    ssl_prefer_server_ciphers on;
+    ssl_session_cache shared:SSL:10m;
+
+    add_header X-Frame-Options SAMEORIGIN;
+    add_header X-Content-Type-Options nosniff;
+
+    location / {
+        proxy_pass https://origin.tardigram.com;
+        proxy_ssl_server_name on;            # SNI para que CF devuelva el cert correcto
+        proxy_set_header Host tardigram.com;  # El backend recibe el Host original
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+
+        # WebSocket support
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+    }
+}
+
+# --- ejemplo2.com ------------------------------------------------------------
+#
+# Prerequisito: crear origin.ejemplo2.com CNAME → tunnel en Cloudflare.
+#
+# server {
+#     listen 80;
+#     server_name ejemplo2.com;
+#
+#     location /.well-known/acme-challenge/ {
+#         root /var/www/certbot;
+#     }
+#
+#     location / {
+#         return 301 https://$host$request_uri;
+#     }
+# }
+#
+# server {
+#     listen 443 ssl;
+#     server_name ejemplo2.com;
+#
+#     ssl_certificate     /etc/letsencrypt/live/ejemplo2.com/fullchain.pem;
+#     ssl_certificate_key /etc/letsencrypt/live/ejemplo2.com/privkey.pem;
+#     ssl_protocols TLSv1.2 TLSv1.3;
+#     ssl_ciphers HIGH:!aNULL:!MD5;
+#     ssl_prefer_server_ciphers on;
+#
+#     location / {
+#         proxy_pass https://origin.ejemplo2.com;
+#         proxy_ssl_server_name on;
+#         proxy_set_header Host ejemplo2.com;
+#         proxy_set_header X-Real-IP $remote_addr;
+#         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+#         proxy_set_header X-Forwarded-Proto $scheme;
+#         proxy_http_version 1.1;
+#         proxy_set_header Upgrade $http_upgrade;
+#         proxy_set_header Connection "upgrade";
+#     }
+# }
