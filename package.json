@@ -1,0 +1,23 @@
+{
+  "name": "cloudflare-switchover",
+  "version": "1.0.0",
+  "description": "Monitors Spanish ISP Cloudflare blocking during football matches and toggles DNS proxy",
+  "main": "src/server.js",
+  "scripts": {
+    "start": "node src/server.js",
+    "test": "node --test test/"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "dependencies": {
+    "fastify": "^4.28.0",
+    "pino": "^9.5.0"
+  },
+  "devDependencies": {
+    "semantic-release": "^24.0.0",
+    "@semantic-release/changelog": "^6.0.0",
+    "@semantic-release/git": "^10.0.0"
+  },
+  "private": true
+}
