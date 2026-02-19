@@ -1,0 +1,10 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: cloudflare-switchover-config
+data:
+  POLL_INTERVAL: "300000"
+  HAYAHORA_URL: "https://hayahora.futbol/estado/data.json"
+  HEALTH_CHECK_PORT: "8080"
+  FOOTBALL_THRESHOLD: "0.5"
+  DOMAIN_RECORDS: '[{"zone_id":"REPLACE_ME","record_name":"example.com","fallback_type":"A","fallback_content":"REPLACE_ME"}]'
