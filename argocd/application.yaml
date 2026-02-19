@@ -1,0 +1,16 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: cloudflare-switchover
+  namespace: argocd
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/NicolasTobias/arenero.git
+    targetRevision: HEAD
+    path: cloudflare-switchover/k8s/overlays/prod
+    directory:
+      recurse: true
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: cloudflare-switchover-prod
