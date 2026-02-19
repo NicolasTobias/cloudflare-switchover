@@ -1,0 +1,13 @@
+services:
+  switchover:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    platform: linux/arm64
+    ports:
+      - "8080:8080"
+    env_file:
+      - .env
+    environment:
+      - LOG_LEVEL=debug
+    restart: unless-stopped
