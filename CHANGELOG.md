@@ -1,3 +1,10 @@
+## [1.0.2](https://github.com/NicolasTobias/cloudflare-switchover/compare/v1.0.1...v1.0.2) (2026-02-19)
+
+
+### Bug Fixes
+
+* new secrets ([9abb390](https://github.com/NicolasTobias/cloudflare-switchover/commit/9abb390742eeb4b3b46785c11d6cae48b6c0bc02))
+
 ## [1.0.1](https://github.com/NicolasTobias/cloudflare-switchover/compare/v1.0.0...v1.0.1) (2026-02-19)
 
 
