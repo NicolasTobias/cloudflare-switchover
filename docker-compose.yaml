@@ -10,4 +10,5 @@ services:
       - .env
     environment:
       - LOG_LEVEL=debug
+      - DOMAIN_RECORDS=${DOMAIN_RECORDS}
     restart: unless-stopped
