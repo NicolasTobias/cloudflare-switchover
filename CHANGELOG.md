@@ -1,3 +1,10 @@
+# [1.1.0](https://github.com/NicolasTobias/cloudflare-switchover/compare/v1.0.2...v1.1.0) (2026-02-20)
+
+
+### Features
+
+* state machine, CF trace verification, and content-based health checks ([5b3b22a](https://github.com/NicolasTobias/cloudflare-switchover/commit/5b3b22a65b170317454f0dd271c5a753c2b9f14d))
+
 ## [1.0.2](https://github.com/NicolasTobias/cloudflare-switchover/compare/v1.0.1...v1.0.2) (2026-02-19)
 
 
