@@ -25,6 +25,9 @@ function loadConfig() {
     if (!rec.fallback_content || !rec.fallback_type) {
       throw new Error('Each DOMAIN_RECORDS entry must have fallback_content, fallback_type');
     }
+    if (rec.health_check_string !== undefined && typeof rec.health_check_string !== 'string') {
+      throw new Error('health_check_string must be a string if provided');
+    }
   }
 
   return {

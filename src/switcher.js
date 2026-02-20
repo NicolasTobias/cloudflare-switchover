@@ -1,6 +1,14 @@
 'use strict';
 
 const { notify } = require('./notifier');
+const { checkAllTraces } = require('./trace');
+
+const STATES = {
+  NORMAL: 'normal',
+  WATCHING: 'watching',
+  FALLBACK: 'fallback',
+  RESTORING: 'restoring',
+};
 
 class Switcher {
   constructor(config, cloudflareClient, logger) {
@@ -8,11 +16,16 @@ class Switcher {
     this.cf = cloudflareClient;
     this.log = logger;
     this.records = [];
-    this.footballActive = false;
+    this.state = STATES.NORMAL;
     this.initialized = false;
     this.lastPoll = null;
     this.lastPollError = null;
     this.consecutiveErrors = 0;
+  }
+
+  /** Backwards-compatible getter */
+  get footballActive() {
+    return this.state === STATES.FALLBACK || this.state === STATES.RESTORING;
   }
 
   async init() {
@@ -31,10 +44,7 @@ class Switcher {
         );
       }
 
-      // Take the first record matching this name
       const rec = cfRecords[0];
-
-      // Determine if this record is currently in fallback state
       const isFallback = rec.type === domainRec.fallback_type
         && rec.content === domainRec.fallback_content;
 
@@ -42,24 +52,22 @@ class Switcher {
         zoneId: domainRec.zone_id,
         recordId: rec.id,
         recordName: rec.name,
-        // Current state from CF
         currentType: rec.type,
         currentContent: rec.content,
         currentProxied: rec.proxied,
-        // Original state (Cloudflare tunnel / normal)
         originalType: isFallback ? null : rec.type,
         originalContent: isFallback ? null : rec.content,
         originalProxied: isFallback ? null : rec.proxied,
-        // Fallback state (direct IP)
         fallbackType: domainRec.fallback_type,
         fallbackContent: domainRec.fallback_content,
+        healthCheckString: domainRec.health_check_string || null,
       });
     }
 
-    // If any record is currently in fallback, we're in football mode
+    // If any record is currently in fallback, start in fallback state
     const anyFallback = this.records.some(r => r.originalType === null);
     if (anyFallback) {
-      this.footballActive = true;
+      this.state = STATES.FALLBACK;
       this.log.warn({
         records: this.records
           .filter(r => r.originalType === null)
@@ -71,6 +79,7 @@ class Switcher {
 
     this.log.info({
       recordsCount: this.records.length,
+      state: this.state,
       footballActive: this.footballActive,
       records: this.records.map(r =>
         `${r.recordName}: ${r.currentType} → ${r.currentContent} [proxied=${r.currentProxied}]`
@@ -81,39 +90,168 @@ class Switcher {
   async onPoll(hayFutbol) {
     this.lastPoll = new Date().toISOString();
 
-    // Stale data — no action
     if (hayFutbol === null) {
       this.log.warn('poll_data_stale_no_action');
       return;
     }
 
-    // Same state — no action
-    if (hayFutbol === this.footballActive) {
-      this.log.debug({ footballActive: this.footballActive }, 'poll_state_unchanged');
+    switch (this.state) {
+      case STATES.NORMAL:
+        await this._onNormal(hayFutbol);
+        break;
+      case STATES.WATCHING:
+        await this._onWatching(hayFutbol);
+        break;
+      case STATES.FALLBACK:
+        await this._onFallback(hayFutbol);
+        break;
+      case STATES.RESTORING:
+        await this._onRestoring(hayFutbol);
+        break;
+    }
+  }
+
+  async _onNormal(hayFutbol) {
+    if (!hayFutbol) {
+      this.log.debug({ state: this.state }, 'poll_state_unchanged');
       return;
     }
 
-    if (hayFutbol) {
-      // Football detected — switch to fallback (direct IP)
-      await this._switchToFallback();
-      this.footballActive = true;
-      const msg = `FUTBOL DETECTADO\nDNS cambiado a IP directa en ${this.records.length} registro(s):\n${this._recordSummary()}`;
-      this.log.info({ recordsCount: this.records.length }, 'football_detected');
-      await this._verifyAndNotify(msg);
+    // Football detected — check if CF is actually blocked
+    this.log.info('football_detected_checking_traces');
+    this.state = STATES.WATCHING;
+
+    const domains = this.records.map(r => r.recordName);
+    const traces = await checkAllTraces(domains, this.log);
+    const allOk = traces.every(t => t.available);
+
+    if (allOk) {
+      this.log.info({ traces: traces.map(t => ({ domain: t.domain, colo: t.data?.colo })) },
+        'cf_still_accessible_staying_in_watching');
     } else {
-      // Football ended — restore original (Cloudflare tunnel)
-      await this._restoreOriginal();
-      this.footballActive = false;
-      const msg = `FIN DEL FUTBOL\nDNS restaurado a Cloudflare en ${this.records.length} registro(s):\n${this._recordSummary()}`;
-      this.log.info({ recordsCount: this.records.length }, 'football_ended');
-      await this._verifyAndNotify(msg);
+      // CF is blocked — switch immediately
+      await this._transitionToFallback(traces);
     }
+  }
+
+  async _onWatching(hayFutbol) {
+    if (!hayFutbol) {
+      // Football ended before CF got blocked
+      this.log.info('football_ended_before_block_returning_to_normal');
+      this.state = STATES.NORMAL;
+      return;
+    }
+
+    // Still football — re-check traces
+    const domains = this.records.map(r => r.recordName);
+    const traces = await checkAllTraces(domains, this.log);
+    const allOk = traces.every(t => t.available);
+
+    if (allOk) {
+      this.log.info({ traces: traces.map(t => ({ domain: t.domain, colo: t.data?.colo })) },
+        'cf_still_accessible_staying_in_watching');
+    } else {
+      await this._transitionToFallback(traces);
+    }
+  }
+
+  async _onFallback(hayFutbol) {
+    if (hayFutbol) {
+      this.log.debug({ state: this.state }, 'poll_state_unchanged');
+      return;
+    }
+
+    // Football ended — start verifying CF is accessible via origin domains
+    this.log.info('football_ended_checking_origin_traces');
+    this.state = STATES.RESTORING;
+
+    await this._attemptRestore();
+  }
+
+  async _onRestoring(hayFutbol) {
+    if (hayFutbol) {
+      // Football resumed — go back to fallback
+      this.log.warn('football_resumed_staying_in_fallback');
+      this.state = STATES.FALLBACK;
+      return;
+    }
+
+    // Keep trying to restore
+    await this._attemptRestore();
+  }
+
+  async _transitionToFallback(traces) {
+    await this._switchToFallback();
+    this.state = STATES.FALLBACK;
+
+    const traceSummary = traces
+      .map(t => `  ${t.domain}: ${t.available ? 'OK' : t.error}`)
+      .join('\n');
+    const msg = `⚽ FUTBOL DETECTADO — CF BLOQUEADO\nDNS cambiado a IP directa en ${this.records.length} registro(s):\n${this._recordSummary()}\n\nTrace check:\n${traceSummary}`;
+    this.log.info({ recordsCount: this.records.length }, 'football_detected_switched_to_fallback');
+    await this._verifyAndNotify(msg);
+  }
+
+  async _attemptRestore() {
+    // Check origin.{domain} — these always go through CF/Argo Tunnel
+    const originDomains = this.records.map(r => `origin.${r.recordName}`);
+    const traces = await checkAllTraces(originDomains, this.log);
+    const allOk = traces.every(t => t.available);
+
+    if (!allOk) {
+      this.log.warn({ traces: traces.map(t => ({ domain: t.domain, error: t.error })) },
+        'origin_traces_still_failing_staying_in_restoring');
+      return;
+    }
+
+    // Origin is accessible — fetch HTML title from origin for notification
+    const originInfo = await this._fetchOriginInfo();
+
+    // Restore DNS
+    await this._restoreOriginal();
+    this.state = STATES.NORMAL;
+
+    const traceSummary = traces
+      .map(t => `  ${t.domain}: colo=${t.data?.colo}, fl=${t.data?.fl}`)
+      .join('\n');
+    const originSummary = originInfo
+      .map(o => `  ${o.domain}: ${o.title || 'no title'} (${o.status})`)
+      .join('\n');
+    const msg = `✅ CF RESTAURADO\nDNS restaurado a Cloudflare en ${this.records.length} registro(s):\n${this._recordSummary()}\n\nOrigin trace:\n${traceSummary}\n\nOrigin HTML:\n${originSummary}`;
+    this.log.info({ recordsCount: this.records.length }, 'cf_restored');
+    await this._verifyAndNotify(msg);
+  }
+
+  async _fetchOriginInfo() {
+    const results = [];
+    for (const rec of this.records) {
+      const originDomain = `origin.${rec.recordName}`;
+      try {
+        const res = await fetch(`https://${originDomain}`, {
+          signal: AbortSignal.timeout(10_000),
+        });
+        const html = await res.text();
+        const titleMatch = html.match(/<title>(.*?)<\/title>/i);
+        results.push({
+          domain: originDomain,
+          status: res.status,
+          title: titleMatch ? titleMatch[1] : null,
+        });
+      } catch (err) {
+        results.push({
+          domain: originDomain,
+          status: 'error',
+          title: null,
+          error: err.message,
+        });
+      }
+    }
+    return results;
   }
 
   async _switchToFallback() {
     for (const rec of this.records) {
       try {
-        // Save original state before overwriting
         rec.originalType = rec.currentType;
         rec.originalContent = rec.currentContent;
         rec.originalProxied = rec.currentProxied;
@@ -128,7 +266,6 @@ class Switcher {
         rec.currentType = rec.fallbackType;
         rec.currentContent = rec.fallbackContent;
         rec.currentProxied = false;
-        // Record ID may change on type change
         if (result.result?.id) rec.recordId = result.result.id;
 
         this.log.info({
@@ -187,13 +324,17 @@ class Switcher {
       const start = Date.now();
       try {
         const res = await fetch(`https://${domain}`, {
-          method: 'HEAD',
           signal: AbortSignal.timeout(10_000),
         });
+        const body = await res.text();
+        const contentOk = rec.healthCheckString
+          ? body.includes(rec.healthCheckString)
+          : null;
         results.push({
           domain,
           status: res.status,
           latencyMs: Date.now() - start,
+          contentOk,
         });
       } catch (err) {
         results.push({
@@ -201,6 +342,7 @@ class Switcher {
           status: 'error',
           error: err.message,
           latencyMs: Date.now() - start,
+          contentOk: false,
         });
       }
     }
@@ -210,7 +352,10 @@ class Switcher {
   async _verifyAndNotify(message) {
     const health = await this._verifyHealth();
     const healthSummary = health
-      .map(h => `  ${h.domain}: ${h.status} (${h.latencyMs}ms)`)
+      .map(h => {
+        const contentInfo = h.contentOk !== null ? ` content=${h.contentOk ? 'OK' : 'FAIL'}` : '';
+        return `  ${h.domain}: ${h.status} (${h.latencyMs}ms)${contentInfo}`;
+      })
       .join('\n');
 
     const fullMsg = `${message}\n\nHealth check:\n${healthSummary}`;
@@ -227,7 +372,7 @@ class Switcher {
         err,
         consecutiveErrors: this.consecutiveErrors,
       }, 'poll_consecutive_errors');
-      return true; // should notify
+      return true;
     }
     return false;
   }
@@ -245,6 +390,7 @@ class Switcher {
 
   getStatus() {
     return {
+      state: this.state,
       footballActive: this.footballActive,
       recordsCount: this.records.length,
       records: this.records.map(r => ({
@@ -263,4 +409,4 @@ class Switcher {
   }
 }
 
-module.exports = { Switcher };
+module.exports = { Switcher, STATES };

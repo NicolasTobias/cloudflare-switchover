@@ -40,7 +40,7 @@ async function main() {
   // Startup notification
   await notify(
     config,
-    `Cloudflare Switchover iniciado\nRegistros: ${switcher.records.length}\nEstado actual: ${switcher.footballActive ? 'FUTBOL ACTIVO (proxy off)' : 'Normal (proxy on)'}`,
+    `Cloudflare Switchover iniciado\nRegistros: ${switcher.records.length}\nEstado: ${switcher.state}\nFootball active: ${switcher.footballActive}`,
     log
   );
 

@@ -7,4 +7,4 @@ data:
   HAYAHORA_URL: "https://hayahora.futbol/estado/data.json"
   HEALTH_CHECK_PORT: "8080"
   FOOTBALL_THRESHOLD: "0.5"
-  DOMAIN_RECORDS: '[{"zone_id":"REPLACE_ME","record_name":"example.com","fallback_type":"A","fallback_content":"REPLACE_ME"}]'
+  DOMAIN_RECORDS: '[{"zone_id":"REPLACE_ME","record_name":"example.com","fallback_type":"A","fallback_content":"REPLACE_ME","health_check_string":"REPLACE_ME"}]'

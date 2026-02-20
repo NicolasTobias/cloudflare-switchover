@@ -12,21 +12,47 @@ Durante partidos de LaLiga, los ISPs españoles bloquean rangos de IPs de Cloudf
 hayahora.futbol              Cloudflare API
       │                            │
       ▼ cada 5 min                 ▼
-  fetchHayaHora()      ┌─ CNAME tunnel → A ip_directa  ← futbol detectado
+  fetchHayaHora()      ┌─ CNAME tunnel → A ip_directa  ← CF bloqueado (trace falla)
       │                │   (proxied=true → false)
   evaluateFootball()  ─┤
   (majority vote ISPs) │
-                       └─ A ip_directa → CNAME tunnel  ← futbol terminado
+                       └─ A ip_directa → CNAME tunnel  ← CF accesible (origin trace OK)
                               │    (proxied=false → true)
                          notify() → Telegram + Slack
 ```
 
+### Máquina de estados
+
+El servicio usa 4 estados para evitar switcheos prematuros:
+
+```
+  normal ──(futbol detectado)──→ watching ──(trace falla)──→ fallback
+    ↑                              │                           │
+    │                    (futbol termina)              (futbol termina)
+    │                              │                           │
+    │                              ▼                           ▼
+    └────────────────────────── normal              restoring ─┘
+                                                       │    ↑
+                                              (origin OK)  (origin falla)
+                                                       │    │
+                                                       ▼    │
+                                                    normal ──┘
+```
+
+- **normal**: DNS apunta a Cloudflare, sin fútbol
+- **watching**: hayahora dice fútbol, verificando si CF está realmente bloqueado via `/cdn-cgi/trace`
+- **fallback**: DNS apunta a VPS, CF bloqueado confirmado
+- **restoring**: hayahora dice no-fútbol, verificando que CF esté accesible via `origin.*` antes de restaurar
+
+### Flujo detallado
+
 1. Cada 5 minutos se consulta `hayahora.futbol/estado/data.json`
 2. Se evalúa el estado de cada ISP (DIGI, Movistar, Orange, Vodafone, Masmovil)
-3. Si la proporción de ISPs con bloqueo activo supera el umbral configurado → futbol detectado
-4. Para cada dominio configurado, se cambia el registro DNS completo: tipo, contenido y proxy. Ej: `CNAME xxx.cfargotunnel.com (proxied)` → `A 5.161.x.x (DNS only)`
-5. Cuando el bloqueo cesa, se restaura el registro original en el siguiente poll
-6. Se envían notificaciones por Telegram y/o Slack en cada cambio de estado
+3. Si la proporción de ISPs con bloqueo activo supera el umbral → se entra en estado `watching`
+4. En `watching`, se verifica `/cdn-cgi/trace` en cada dominio. Si el trace falla (CF bloqueado), se hace el switch DNS a fallback
+5. Cuando hayahora dice no-fútbol, se entra en `restoring` y se verifica que `origin.{domain}` (que siempre pasa por CF) responda correctamente
+6. Solo cuando el origin trace vuelve OK se restaura el DNS original
+7. Se envían notificaciones por Telegram y/o Slack en cada cambio de estado, incluyendo resultado del trace y verificación de contenido HTML
 
 ## Requisitos
 
@@ -68,7 +94,8 @@ Array JSON con los registros DNS a gestionar. Cada entrada indica el dominio y a
     "zone_id": "abc123def456",
     "record_name": "tardigram.com",
     "fallback_type": "A",
-    "fallback_content": "5.161.x.x"
+    "fallback_content": "5.161.x.x",
+    "health_check_string": "Tardigram"
   }
 ]
 ```
@@ -77,8 +104,9 @@ Array JSON con los registros DNS a gestionar. Cada entrada indica el dominio y a
 - `record_name`: nombre del registro DNS
 - `fallback_type`: tipo de registro durante el bloqueo (normalmente `A`)
 - `fallback_content`: IP directa del servidor de origen
+- `health_check_string` (opcional): string a buscar en el HTML del dominio para verificar que el contenido es correcto tras un switch. Si no se especifica, solo se verifica el status HTTP
 
-El servicio lee el registro actual de Cloudflare al arrancar (ej. `CNAME xxx.cfargotunnel.com`) y lo guarda. Cuando detecta fútbol, lo reemplaza por el fallback. Cuando termina, restaura el original.
+El servicio lee el registro actual de Cloudflare al arrancar (ej. `CNAME xxx.cfargotunnel.com`) y lo guarda. Cuando detecta bloqueo de CF, lo reemplaza por el fallback. Cuando el bloqueo cesa y se verifica que CF es accesible, restaura el original.
 
 Ejemplo con Argo Tunnel:
 
@@ -120,23 +148,26 @@ curl localhost:8080/status    # → estado completo en JSON
 npm test
 ```
 
-33 tests cubriendo:
+55 tests cubriendo:
 - Lógica de evaluación de futbol (majority vote, umbral, staleness, deduplicación por ISP)
 - Cliente de Cloudflare API (parsing de respuestas, headers de auth, reintentos)
-- Máquina de estados del switcher (transiciones, datos nulos, múltiples registros, errores consecutivos)
+- Máquina de estados del switcher (todas las transiciones: normal, watching, fallback, restoring)
+- Verificación de salud con contenido HTML (`health_check_string`)
+- Checker de `/cdn-cgi/trace` (parseo, errores, checks en paralelo)
 
 ## Endpoints HTTP
 
 | Endpoint | Descripción |
 |----------|-------------|
-| `GET /healthz` | Liveness probe — siempre 200 si el proceso está vivo |
-| `GET /readyz` | Readiness probe — 200 tras inicialización, 503 antes |
+| `GET /healthz` | Liveness probe — siempre 200 si el proceso está vivo (logs silenciados) |
+| `GET /readyz` | Readiness probe — 200 tras inicialización, 503 antes (logs silenciados) |
 | `GET /status` | Estado completo en JSON |
 
 Ejemplo de respuesta de `/status`:
 
 ```json
 {
+  "state": "normal",
   "footballActive": false,
   "recordsCount": 1,
   "records": [
@@ -158,6 +189,10 @@ Ejemplo de respuesta de `/status`:
 
 ## Detalles de diseño
 
+**Máquina de estados**: El servicio ya no hace switcheos binarios. Cuando hayahora detecta fútbol, primero verifica que Cloudflare esté realmente bloqueado (`/cdn-cgi/trace`). Para restaurar, verifica que CF sea accesible via `origin.{domain}` antes de cambiar el DNS. Esto previene switcheos innecesarios y apagones durante la restauración.
+
+**Verificación de contenido**: El health check después de un switch no solo verifica status HTTP 200, sino que busca un string esperado en el HTML (`health_check_string`). Esto detecta páginas de error o contenido incorrecto.
+
 **Majority vote**: Se evalúa el último `stateChange` de cada ISP. Si la proporción de ISPs con `state: true` (bloqueado) es >= `FOOTBALL_THRESHOLD`, se activa el switch. Por defecto el umbral es 0.5 (mayoría simple).
 
 **Staleness check**: Si `lastUpdate` del endpoint de hayahora tiene más de 30 minutos de antigüedad, se considera dato obsoleto y no se actúa (se retiene el estado anterior).
@@ -168,7 +203,9 @@ Ejemplo de respuesta de `/status`:
 
 **Reintentos en Cloudflare API**: 3 intentos con backoff exponencial (2s, 4s, 8s) en caso de error.
 
-**Notificaciones**: Se envían a Telegram y/o Slack en cada cambio de estado y tras un health check de los dominios. Tras 3 errores de polling consecutivos se envía una alerta.
+**Notificaciones**: Se envían a Telegram y/o Slack en cada cambio de estado, incluyendo resultado del trace de CF, extracto HTML del origin, y health check de los dominios con verificación de contenido. Tras 3 errores de polling consecutivos se envía una alerta.
+
+**Logs silenciados en health checks**: Las rutas `/healthz` y `/readyz` usan `logLevel: 'silent'` en Fastify para evitar ruido de los probes de K8s (cada 10s liveness, cada 30s readiness).
 
 ## Nginx reverse proxy (VPS)
 
@@ -194,7 +231,7 @@ Para cada dominio, crear un subdominio `origin` que apunte al tunnel y **nunca s
 | `tardigram.com` | CNAME | `xxx.cfargotunnel.com` | Si | Si (cambia a A record durante futbol) |
 | `origin.tardigram.com` | CNAME | `xxx.cfargotunnel.com` | Si | **No (nunca se toca)** |
 
-nginx usa `origin.tardigram.com` como upstream, que siempre resuelve a Cloudflare y pasa por el tunnel.
+nginx usa `origin.tardigram.com` como upstream, que siempre resuelve a Cloudflare y pasa por el tunnel. El servicio también usa `origin.*` para verificar que CF es accesible antes de restaurar el DNS.
 
 ### Setup en el VPS
 
@@ -277,11 +314,13 @@ cloudflare-switchover/
 │   ├── cloudflare.js   # Cliente API Cloudflare (listRecords, updateRecord, reintentos)
 │   ├── notifier.js     # Telegram Bot API + Slack webhook
 │   ├── switcher.js     # Orquestador: máquina de estados + DNS switch + verify + notify
-│   └── health.js       # Plugin Fastify: /healthz, /readyz, /status
+│   ├── trace.js        # Checker de Cloudflare /cdn-cgi/trace
+│   └── health.js       # Plugin Fastify: /healthz, /readyz, /status (logs silenciados)
 ├── test/
 │   ├── poller.test.js
 │   ├── cloudflare.test.js
-│   └── switcher.test.js
+│   ├── switcher.test.js
+│   └── trace.test.js
 ├── k8s/
 │   ├── base/           # Deployment + ConfigMap
 │   └── overlays/prod/  # Namespace, secrets, imagePullSecrets, image tag
