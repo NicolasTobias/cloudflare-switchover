@@ -1,3 +1,11 @@
+## [1.1.1](https://github.com/NicolasTobias/cloudflare-switchover/compare/v1.1.0...v1.1.1) (2026-02-20)
+
+
+### Bug Fixes
+
+* **k8s:** add DOMAIN_RECORDS with real values to prod overlay ([126eec1](https://github.com/NicolasTobias/cloudflare-switchover/commit/126eec12a98c317191e71d6b1a1058b93d160572))
+* **k8s:** add real DOMAIN_RECORDS to prod overlay and show version in startup notification ([d3f9356](https://github.com/NicolasTobias/cloudflare-switchover/commit/d3f9356f8daeeb74b21b8af6b248da42e60f30cf))
+
 # [1.1.0](https://github.com/NicolasTobias/cloudflare-switchover/compare/v1.0.2...v1.1.0) (2026-02-20)
 
 
