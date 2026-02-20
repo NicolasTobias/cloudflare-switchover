@@ -1,3 +1,10 @@
+## [1.1.2](https://github.com/NicolasTobias/cloudflare-switchover/compare/v1.1.1...v1.1.2) (2026-02-20)
+
+
+### Bug Fixes
+
+* **ci:** sync full overlays directory including kustomization.yaml ([a387097](https://github.com/NicolasTobias/cloudflare-switchover/commit/a387097e63eb5ef2597afdcc7383e3d4a240cbd4))
+
 ## [1.1.1](https://github.com/NicolasTobias/cloudflare-switchover/compare/v1.1.0...v1.1.1) (2026-02-20)
 
 
