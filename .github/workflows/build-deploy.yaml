@@ -86,17 +86,9 @@ jobs:
           rm -rf arenero/cloudflare-switchover/k8s/base
           cp -r k8s/base arenero/cloudflare-switchover/k8s/base
 
-          # Copy overlay files except kustomization.yaml (has deployed image tags)
-          find k8s/overlays -type f ! -name 'kustomization.yaml' | while read src; do
-            dest="arenero/cloudflare-switchover/$src"
-            mkdir -p "$(dirname "$dest")"
-            cp "$src" "$dest"
-          done
-
-          # Ensure prod kustomization.yaml exists in arenero (first deploy)
-          if [ ! -f arenero/cloudflare-switchover/k8s/overlays/prod/kustomization.yaml ]; then
-            cp k8s/overlays/prod/kustomization.yaml arenero/cloudflare-switchover/k8s/overlays/prod/kustomization.yaml
-          fi
+          # Copy overlays entirely (kustomize edit set image will update image tag after)
+          rm -rf arenero/cloudflare-switchover/k8s/overlays
+          cp -r k8s/overlays arenero/cloudflare-switchover/k8s/overlays
 
       - name: Update Kustomization with new image tag
         run: |
