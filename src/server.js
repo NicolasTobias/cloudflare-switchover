@@ -8,6 +8,7 @@ const { Switcher } = require('./switcher');
 const { fetchHayaHora, evaluateFootball } = require('./poller');
 const { notify } = require('./notifier');
 const healthRoutes = require('./health');
+const { version } = require('../package.json');
 
 async function main() {
   const log = pino({ level: process.env.LOG_LEVEL || 'info' });
@@ -40,7 +41,7 @@ async function main() {
   // Startup notification
   await notify(
     config,
-    `Cloudflare Switchover iniciado\nRegistros: ${switcher.records.length}\nEstado: ${switcher.state}\nFootball active: ${switcher.footballActive}`,
+    `Cloudflare Switchover v${version}\nRegistros: ${switcher.records.length}\nEstado: ${switcher.state}\nFootball active: ${switcher.footballActive}`,
     log
   );
 
