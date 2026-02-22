@@ -180,12 +180,12 @@ Incluye:
 Para probar el flujo de switchover sin esperar a un partido de fútbol real:
 
 ```bash
-# Activar fútbol forzado — cambia DNS a fallback (VPS)
+# Activar fútbol forzado — cambia DNS a fallback (VPS) directamente
 curl -X POST localhost:8080/test/force-football \
   -H 'Content-Type: application/json' \
   -d '{"enabled": true}'
 
-# Desactivar fútbol forzado — inicia restauración a Cloudflare
+# Desactivar fútbol forzado — restaura DNS a Cloudflare directamente
 curl -X POST localhost:8080/test/force-football \
   -H 'Content-Type: application/json' \
   -d '{"enabled": false}'
@@ -194,7 +194,7 @@ curl -X POST localhost:8080/test/force-football \
 curl -X DELETE localhost:8080/test/force-football
 ```
 
-El POST también dispara un poll inmediato, así que el cambio de estado es instantáneo. El override persiste entre polls hasta que se limpie con DELETE o se reinicie el servicio.
+El force bypasea la máquina de estados: no verifica traces ni origin, cambia el DNS inmediatamente y envía notificación a Telegram/Slack. El override persiste entre polls hasta que se limpie con DELETE o se reinicie el servicio.
 
 También se puede usar la variable de entorno `FORCE_FOOTBALL` al arrancar:
 
