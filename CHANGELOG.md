@@ -1,3 +1,10 @@
+# [1.3.0](https://github.com/NicolasTobias/cloudflare-switchover/compare/v1.2.0...v1.3.0) (2026-02-22)
+
+
+### Features
+
+* add webite ([48bc6ce](https://github.com/NicolasTobias/cloudflare-switchover/commit/48bc6ce0725d9453f0502e1c614d6b470a5d48df))
+
 # [1.2.0](https://github.com/NicolasTobias/cloudflare-switchover/compare/v1.1.3...v1.2.0) (2026-02-22)
 
 
