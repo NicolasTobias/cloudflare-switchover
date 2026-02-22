@@ -1,3 +1,10 @@
+## [1.3.2](https://github.com/NicolasTobias/cloudflare-switchover/compare/v1.3.1...v1.3.2) (2026-02-22)
+
+
+### Bug Fixes
+
+* bypass state machine ([8d82e1a](https://github.com/NicolasTobias/cloudflare-switchover/commit/8d82e1a0bed5e779eea5dae74bfae286ad097407))
+
 ## [1.3.1](https://github.com/NicolasTobias/cloudflare-switchover/compare/v1.3.0...v1.3.1) (2026-02-22)
 
 
