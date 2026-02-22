@@ -16,6 +16,26 @@ async function healthRoutes(fastify, { switcher }) {
   fastify.get('/status', async () => {
     return switcher.getStatus();
   });
+
+  // Test endpoints — force football state for manual testing
+  fastify.post('/test/force-football', async (request) => {
+    const enabled = request.body?.enabled;
+    if (enabled === true || enabled === 'true') {
+      process.env.FORCE_FOOTBALL = 'true';
+    } else if (enabled === false || enabled === 'false') {
+      process.env.FORCE_FOOTBALL = 'false';
+    } else {
+      delete process.env.FORCE_FOOTBALL;
+    }
+    // Trigger immediate poll
+    await switcher.onPoll(process.env.FORCE_FOOTBALL === 'true');
+    return { forceFootball: process.env.FORCE_FOOTBALL || null, state: switcher.state };
+  });
+
+  fastify.delete('/test/force-football', async () => {
+    delete process.env.FORCE_FOOTBALL;
+    return { forceFootball: null, state: switcher.state };
+  });
 }
 
 module.exports = healthRoutes;

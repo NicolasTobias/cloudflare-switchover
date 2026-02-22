@@ -49,11 +49,17 @@ async function main() {
   async function poll() {
     log.info('poll_started');
     try {
-      const data = await fetchHayaHora(config.hayahoraUrl);
-      const hayFutbol = evaluateFootball(data, config.footballThreshold);
+      let hayFutbol;
+      if (process.env.FORCE_FOOTBALL) {
+        hayFutbol = process.env.FORCE_FOOTBALL === 'true';
+        log.warn({ forced: hayFutbol }, 'force_football_override');
+      } else {
+        const data = await fetchHayaHora(config.hayahoraUrl);
+        hayFutbol = evaluateFootball(data, config.footballThreshold);
 
-      if (hayFutbol === null) {
-        log.warn('hayahora_data_stale');
+        if (hayFutbol === null) {
+          log.warn('hayahora_data_stale');
+        }
       }
 
       await switcher.onPoll(hayFutbol);

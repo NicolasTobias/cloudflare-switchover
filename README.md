@@ -83,6 +83,7 @@ cp .env.example .env
 | `TELEGRAM_THREAD_ID` | No | — | Thread ID para enviar al topic de un supergrupo |
 | `SLACK_WEBHOOK_URL` | No | — | Webhook de Slack para notificaciones |
 | `LOG_LEVEL` | No | `info` | Nivel de log de Pino (`debug`, `info`, `warn`, `error`) |
+| `FORCE_FOOTBALL` | No | — | Override para testing: `true` fuerza estado futbol, `false` fuerza no-futbol. Omitir para comportamiento normal |
 
 ### Formato de DOMAIN_RECORDS
 
@@ -162,6 +163,33 @@ npm test
 | `GET /healthz` | Liveness probe — siempre 200 si el proceso está vivo (logs silenciados) |
 | `GET /readyz` | Readiness probe — 200 tras inicialización, 503 antes (logs silenciados) |
 | `GET /status` | Estado completo en JSON |
+
+### Test endpoints
+
+Para probar el flujo de switchover sin esperar a un partido de fútbol real:
+
+```bash
+# Activar fútbol forzado — cambia DNS a fallback (VPS)
+curl -X POST localhost:8080/test/force-football \
+  -H 'Content-Type: application/json' \
+  -d '{"enabled": true}'
+
+# Desactivar fútbol forzado — inicia restauración a Cloudflare
+curl -X POST localhost:8080/test/force-football \
+  -H 'Content-Type: application/json' \
+  -d '{"enabled": false}'
+
+# Limpiar override — volver a modo automático (hayahora)
+curl -X DELETE localhost:8080/test/force-football
+```
+
+El POST también dispara un poll inmediato, así que el cambio de estado es instantáneo. El override persiste entre polls hasta que se limpie con DELETE o se reinicie el servicio.
+
+También se puede usar la variable de entorno `FORCE_FOOTBALL` al arrancar:
+
+```bash
+FORCE_FOOTBALL=true docker compose up --build
+```
 
 Ejemplo de respuesta de `/status`:
 

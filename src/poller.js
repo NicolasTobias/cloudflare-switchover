@@ -20,6 +20,10 @@ async function fetchHayaHora(url) {
  * Returns null if data is stale (lastUpdate > 30min old).
  */
 function evaluateFootball(data, threshold) {
+  const force = process.env.FORCE_FOOTBALL;
+  if (force === 'true') return true;
+  if (force === 'false') return false;
+
   if (!data || !data.data || !Array.isArray(data.data)) {
     return null;
   }
