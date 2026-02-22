@@ -10,6 +10,8 @@ const STATES = {
   RESTORING: 'restoring',
 };
 
+const MAX_EVENT_LOG = 200;
+
 class Switcher {
   constructor(config, cloudflareClient, logger) {
     this.config = config;
@@ -21,6 +23,24 @@ class Switcher {
     this.lastPoll = null;
     this.lastPollError = null;
     this.consecutiveErrors = 0;
+    this.eventLog = [];
+    this.startedAt = new Date().toISOString();
+  }
+
+  addEvent(type, detail = {}) {
+    const entry = {
+      timestamp: new Date().toISOString(),
+      type,
+      ...detail,
+    };
+    this.eventLog.unshift(entry);
+    if (this.eventLog.length > MAX_EVENT_LOG) {
+      this.eventLog.length = MAX_EVENT_LOG;
+    }
+  }
+
+  getEventLog() {
+    return this.eventLog;
   }
 
   /** Backwards-compatible getter */
@@ -68,6 +88,7 @@ class Switcher {
     const anyFallback = this.records.some(r => r.originalType === null);
     if (anyFallback) {
       this.state = STATES.FALLBACK;
+      this.addEvent('state_change', { from: STATES.NORMAL, to: STATES.FALLBACK, message: 'Init detected fallback state' });
       this.log.warn({
         records: this.records
           .filter(r => r.originalType === null)
@@ -119,6 +140,7 @@ class Switcher {
 
     // Football detected — check if CF is actually blocked
     this.log.info('football_detected_checking_traces');
+    this.addEvent('state_change', { from: STATES.NORMAL, to: STATES.WATCHING, message: 'Football detected, checking traces' });
     this.state = STATES.WATCHING;
 
     const domains = this.records.map(r => r.recordName);
@@ -138,6 +160,7 @@ class Switcher {
     if (!hayFutbol) {
       // Football ended before CF got blocked
       this.log.info('football_ended_before_block_returning_to_normal');
+      this.addEvent('state_change', { from: STATES.WATCHING, to: STATES.NORMAL, message: 'Football ended before block' });
       this.state = STATES.NORMAL;
       return;
     }
@@ -163,6 +186,7 @@ class Switcher {
 
     // Football ended — start verifying CF is accessible via origin domains
     this.log.info('football_ended_checking_origin_traces');
+    this.addEvent('state_change', { from: STATES.FALLBACK, to: STATES.RESTORING, message: 'Football ended, checking origin traces' });
     this.state = STATES.RESTORING;
 
     await this._attemptRestore();
@@ -172,6 +196,7 @@ class Switcher {
     if (hayFutbol) {
       // Football resumed — go back to fallback
       this.log.warn('football_resumed_staying_in_fallback');
+      this.addEvent('state_change', { from: STATES.RESTORING, to: STATES.FALLBACK, message: 'Football resumed during restore' });
       this.state = STATES.FALLBACK;
       return;
     }
@@ -181,8 +206,10 @@ class Switcher {
   }
 
   async _transitionToFallback(traces) {
+    const prevState = this.state;
     await this._switchToFallback();
     this.state = STATES.FALLBACK;
+    this.addEvent('state_change', { from: prevState, to: STATES.FALLBACK, message: 'CF blocked — switched to fallback DNS' });
 
     const traceSummary = traces
       .map(t => `  ${t.domain}: ${t.available ? 'OK' : t.error}`)
@@ -210,6 +237,7 @@ class Switcher {
     // Restore DNS
     await this._restoreOriginal();
     this.state = STATES.NORMAL;
+    this.addEvent('state_change', { from: STATES.RESTORING, to: STATES.NORMAL, message: 'CF restored — DNS back to Cloudflare' });
 
     const traceSummary = traces
       .map(t => `  ${t.domain}: colo=${t.data?.colo}, fl=${t.data?.fl}`)
@@ -360,12 +388,14 @@ class Switcher {
 
     const fullMsg = `${message}\n\nHealth check:\n${healthSummary}`;
     this.log.info({ health }, 'health_check_completed');
+    this.addEvent('notification', { message: message.split('\n')[0] });
     await notify(this.config, fullMsg, this.log);
   }
 
   recordPollError(err) {
     this.lastPollError = err.message;
     this.consecutiveErrors++;
+    this.addEvent('poll_error', { message: err.message, consecutiveErrors: this.consecutiveErrors });
 
     if (this.consecutiveErrors >= 3) {
       this.log.error({

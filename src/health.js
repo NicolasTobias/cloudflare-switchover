@@ -1,6 +1,12 @@
 'use strict';
 
+const { renderDashboard } = require('./dashboard');
+
 async function healthRoutes(fastify, { switcher }) {
+  fastify.get('/', async (request, reply) => {
+    reply.type('text/html').send(renderDashboard());
+  });
+
   fastify.get('/healthz', { logLevel: 'silent' }, async () => {
     return { status: 'ok' };
   });
@@ -14,7 +20,14 @@ async function healthRoutes(fastify, { switcher }) {
   });
 
   fastify.get('/status', async () => {
-    return switcher.getStatus();
+    return {
+      ...switcher.getStatus(),
+      forceFootball: process.env.FORCE_FOOTBALL || null,
+    };
+  });
+
+  fastify.get('/api/events', async () => {
+    return switcher.getEventLog();
   });
 
   // Test endpoints — force football state for manual testing
@@ -22,10 +35,13 @@ async function healthRoutes(fastify, { switcher }) {
     const enabled = request.body?.enabled;
     if (enabled === true || enabled === 'true') {
       process.env.FORCE_FOOTBALL = 'true';
+      switcher.addEvent('force_override', { message: 'Force football ON' });
     } else if (enabled === false || enabled === 'false') {
       process.env.FORCE_FOOTBALL = 'false';
+      switcher.addEvent('force_override', { message: 'Force football OFF' });
     } else {
       delete process.env.FORCE_FOOTBALL;
+      switcher.addEvent('force_override', { message: 'Force cleared' });
     }
     // Trigger immediate poll
     await switcher.onPoll(process.env.FORCE_FOOTBALL === 'true');
@@ -34,6 +50,7 @@ async function healthRoutes(fastify, { switcher }) {
 
   fastify.delete('/test/force-football', async () => {
     delete process.env.FORCE_FOOTBALL;
+    switcher.addEvent('force_override', { message: 'Force cleared (auto)' });
     return { forceFootball: null, state: switcher.state };
   });
 }
