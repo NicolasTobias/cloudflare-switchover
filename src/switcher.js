@@ -43,6 +43,28 @@ class Switcher {
     return this.eventLog;
   }
 
+  async forceSwitch(toFallback) {
+    const prevState = this.state;
+
+    if (toFallback) {
+      if (this.state === STATES.FALLBACK) return;
+      await this._switchToFallback();
+      this.state = STATES.FALLBACK;
+      this.addEvent('force_override', { from: prevState, to: STATES.FALLBACK, message: 'Forced switch to fallback' });
+      const msg = `🔧 FORCE ON — DNS cambiado a IP directa en ${this.records.length} registro(s):\n${this._recordSummary()}`;
+      this.log.info({ from: prevState, to: STATES.FALLBACK }, 'force_switch_to_fallback');
+      await this._verifyAndNotify(msg);
+    } else {
+      if (this.state === STATES.NORMAL) return;
+      await this._restoreOriginal();
+      this.state = STATES.NORMAL;
+      this.addEvent('force_override', { from: prevState, to: STATES.NORMAL, message: 'Forced restore to Cloudflare' });
+      const msg = `🔧 FORCE OFF — DNS restaurado a Cloudflare en ${this.records.length} registro(s):\n${this._recordSummary()}`;
+      this.log.info({ from: prevState, to: STATES.NORMAL }, 'force_switch_to_normal');
+      await this._verifyAndNotify(msg);
+    }
+  }
+
   /** Backwards-compatible getter */
   get footballActive() {
     return this.state === STATES.FALLBACK || this.state === STATES.RESTORING;

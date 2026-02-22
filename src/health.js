@@ -31,20 +31,19 @@ async function healthRoutes(fastify, { switcher }) {
   });
 
   // Test endpoints — force football state for manual testing
+  // forceSwitch() bypasses trace verification and switches DNS directly
   fastify.post('/test/force-football', async (request) => {
     const enabled = request.body?.enabled;
     if (enabled === true || enabled === 'true') {
       process.env.FORCE_FOOTBALL = 'true';
-      switcher.addEvent('force_override', { message: 'Force football ON' });
+      await switcher.forceSwitch(true);
     } else if (enabled === false || enabled === 'false') {
       process.env.FORCE_FOOTBALL = 'false';
-      switcher.addEvent('force_override', { message: 'Force football OFF' });
+      await switcher.forceSwitch(false);
     } else {
       delete process.env.FORCE_FOOTBALL;
       switcher.addEvent('force_override', { message: 'Force cleared' });
     }
-    // Trigger immediate poll
-    await switcher.onPoll(process.env.FORCE_FOOTBALL === 'true');
     return { forceFootball: process.env.FORCE_FOOTBALL || null, state: switcher.state };
   });
 
