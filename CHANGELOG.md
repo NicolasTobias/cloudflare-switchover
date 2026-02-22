@@ -1,3 +1,10 @@
+## [1.3.1](https://github.com/NicolasTobias/cloudflare-switchover/compare/v1.3.0...v1.3.1) (2026-02-22)
+
+
+### Bug Fixes
+
+* add readme with new website ([5ed6a93](https://github.com/NicolasTobias/cloudflare-switchover/commit/5ed6a936d3916dc082076f73dad2e77660f8c8f1))
+
 # [1.3.0](https://github.com/NicolasTobias/cloudflare-switchover/compare/v1.2.0...v1.3.0) (2026-02-22)
 
 
