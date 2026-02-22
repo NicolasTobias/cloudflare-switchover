@@ -160,9 +160,20 @@ npm test
 
 | Endpoint | Descripción |
 |----------|-------------|
+| `GET /` | Dashboard web con estado, controles y historial |
 | `GET /healthz` | Liveness probe — siempre 200 si el proceso está vivo (logs silenciados) |
 | `GET /readyz` | Readiness probe — 200 tras inicialización, 503 antes (logs silenciados) |
 | `GET /status` | Estado completo en JSON |
+| `GET /api/events` | Historial de eventos en JSON (últimos 200) |
+
+### Dashboard
+
+Accesible en `http://cambiador.level5.local/` (requiere Ingress en K8s) o `http://localhost:8080/` en local.
+
+Incluye:
+- Estado actual de la máquina de estados y registros DNS
+- Botones Force ON / Force OFF / Auto para testing
+- Tabla de historial de eventos (state changes, notificaciones, errores) con auto-refresh cada 30s
 
 ### Test endpoints
 
@@ -343,14 +354,15 @@ cloudflare-switchover/
 │   ├── notifier.js     # Telegram Bot API + Slack webhook
 │   ├── switcher.js     # Orquestador: máquina de estados + DNS switch + verify + notify
 │   ├── trace.js        # Checker de Cloudflare /cdn-cgi/trace
-│   └── health.js       # Plugin Fastify: /healthz, /readyz, /status (logs silenciados)
+│   ├── health.js       # Plugin Fastify: /healthz, /readyz, /status, /api/events, dashboard
+│   └── dashboard.js    # HTML/CSS/JS inline para el dashboard web
 ├── test/
 │   ├── poller.test.js
 │   ├── cloudflare.test.js
 │   ├── switcher.test.js
 │   └── trace.test.js
 ├── k8s/
-│   ├── base/           # Deployment + ConfigMap
+│   ├── base/           # Deployment + ConfigMap + Service + Ingress
 │   └── overlays/prod/  # Namespace, secrets, imagePullSecrets, image tag
 ├── nginx/
 │   ├── docker-compose.yaml   # nginx + certbot para el VPS
