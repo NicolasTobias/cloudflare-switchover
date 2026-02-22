@@ -1,3 +1,10 @@
+# [1.2.0](https://github.com/NicolasTobias/cloudflare-switchover/compare/v1.1.3...v1.2.0) (2026-02-22)
+
+
+### Features
+
+* add testing sistem ([fe15e2a](https://github.com/NicolasTobias/cloudflare-switchover/commit/fe15e2acbf3eb2787c5b684f9770051050b002d7))
+
 ## [1.1.3](https://github.com/NicolasTobias/cloudflare-switchover/compare/v1.1.2...v1.1.3) (2026-02-20)
 
 
