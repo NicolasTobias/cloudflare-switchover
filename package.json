@@ -1,6 +1,6 @@
 {
   "name": "cloudflare-switchover",
-  "version": "1.4.0",
+  "version": "1.4.1",
   "description": "Monitors Spanish ISP Cloudflare blocking during football matches and toggles DNS proxy",
   "main": "src/server.js",
   "scripts": {

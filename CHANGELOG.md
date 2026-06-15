@@ -1,3 +1,11 @@
+## [1.4.1](https://github.com/NicolasTobias/cloudflare-switchover/compare/v1.4.0...v1.4.1) (2026-06-15)
+
+
+### Bug Fixes
+
+* **version:** inyectar en la imagen la versión que semantic-release va a publicar ([3348713](https://github.com/NicolasTobias/cloudflare-switchover/commit/33487137c0e936c55c406384e2131a1f5fc781fe))
+* **version:** usar Node 22 para calcular la versión (semantic-release@24 requiere Node>=20) ([534b969](https://github.com/NicolasTobias/cloudflare-switchover/commit/534b969591b89e415d69f3d72cb2127411ee1ad9))
+
 # [1.4.0](https://github.com/NicolasTobias/cloudflare-switchover/compare/v1.3.2...v1.4.0) (2026-06-15)
 
 
