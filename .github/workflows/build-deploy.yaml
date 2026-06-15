@@ -2,11 +2,15 @@ name: Build and Deploy
 
 on:
   push:
+    # Los cambios de código se despliegan vía el TAG que crea semantic-release
+    # (refs/tags/v*): ahí package.json ya tiene la versión correcta, así que la
+    # imagen se sella determinísticamente sin carrera con el workflow Release.
+    tags:
+      - 'v*'
+    # Cambios solo-infra (no generan release) se despliegan en push a main.
     branches:
       - main
     paths:
-      - 'src/**'
-      - 'package*.json'
       - 'Dockerfile'
       - 'k8s/**'
       - '.github/workflows/build-deploy.yaml'
@@ -18,9 +22,13 @@ env:
 
 jobs:
   build-and-push:
+    # Tags (releases) y dispatch siempre construyen. En push a main (infra) se
+    # respeta el skip del commit de release.
     if: >-
-      !contains(github.event.head_commit.message, '[skip ci]') &&
-      !startsWith(github.event.head_commit.message, 'chore(release)')
+      startsWith(github.ref, 'refs/tags/v') ||
+      github.event_name == 'workflow_dispatch' ||
+      ( !contains(github.event.head_commit.message, '[skip ci]') &&
+        !startsWith(github.event.head_commit.message, 'chore(release)') )
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -29,33 +37,19 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
-        with:
-          fetch-depth: 0  # historia completa + tags para que semantic-release calcule la versión
 
       - name: Set lowercase repository name
         id: repo
         run: echo "repository=$(echo ${{ github.repository }} | tr '[:upper:]' '[:lower:]')" >> $GITHUB_OUTPUT
 
-      - name: Set up Node
-        uses: actions/setup-node@v4
-        with:
-          node-version: 22  # semantic-release@24 requiere Node >=20 (igual que el workflow Release)
-
-      - name: Compute release version
+      - name: Resolve version
         id: ver
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        # En un build por tag, el checkout trae el commit de release con
+        # package.json ya bumpeado, así que basta leerlo (sin carreras).
         run: |
-          npm ci
-          # semantic-release --dry-run calcula la MISMA versión que el workflow
-          # Release publicará (analiza los mismos commits). Si no hay release
-          # nuevo, se usa la versión actual de package.json.
-          NEXT=$(npx semantic-release --dry-run 2>&1 \
-            | grep -oiE 'next release version is [0-9]+\.[0-9]+\.[0-9]+' \
-            | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1 || true)
-          if [ -z "$NEXT" ]; then NEXT=$(node -p "require('./package.json').version"); fi
-          echo "version=$NEXT" >> "$GITHUB_OUTPUT"
-          echo "Versión resuelta: $NEXT"
+          V=$(node -p "require('./package.json').version")
+          echo "version=$V" >> "$GITHUB_OUTPUT"
+          echo "Versión resuelta: $V"
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
