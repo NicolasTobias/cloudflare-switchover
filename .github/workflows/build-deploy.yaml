@@ -39,7 +39,7 @@ jobs:
       - name: Set up Node
         uses: actions/setup-node@v4
         with:
-          node-version: 18
+          node-version: 22  # semantic-release@24 requiere Node >=20 (igual que el workflow Release)
 
       - name: Compute release version
         id: ver
