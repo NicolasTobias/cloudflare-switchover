@@ -1,18 +1,17 @@
 # ===========================================================
-# Copiar este archivo a domains.conf y ajustar los valores.
-# Agregar un bloque server{} por cada dominio a proxear.
+# VPS Nginx — reverse proxy via frp tunnel (bypass Cloudflare)
 #
-# Prerequisito en Cloudflare:
-#   Crear un subdominio origin.DOMINIO que apunte al tunnel
-#   (CNAME → xxx.cfargotunnel.com, proxied=ON).
-#   Este subdominio NO debe ser modificado por el switchover service.
-#   nginx lo usa como upstream para llegar al backend via Cloudflare.
+# Este archivo refleja la config DESPLEGADA en producción (laliga-antiblock,
+# 151.115.80.213). Copiar a domains.conf y ajustar dominios si hace falta.
+#
+# Arquitectura:
+#   Client → nginx:443 (TLS) → Anubis:8923 (PoW) → frp:8080 → HAProxy
+#   Assets estáticos: nginx → frp:8080 directo (bypass Anubis, desde cache)
+#
+# Nota: requiere `proxy_cache_path ... keys_zone=static_cache` en nginx.conf.
 # ===========================================================
 
 # --- tardigram.com -----------------------------------------------------------
-#
-# Flujo:  Cliente → VPS (nginx) → origin.tardigram.com (CF edge) → Argo Tunnel → Backend
-#         HTTPS end-to-end: Let's Encrypt en nginx, cert público de CF en el edge.
 
 server {
     listen 80;
@@ -41,10 +40,40 @@ server {
     add_header X-Frame-Options SAMEORIGIN;
     add_header X-Content-Type-Options nosniff;
 
+    # Redirect Rule de Cloudflare replicada: la home redirige al feed local.
+    # En fallback el tráfico no pasa por CF, así que se replica aquí.
+    # location = / (match exacto) solo afecta a la raíz.
+    location = / {
+        return 302 https://tardigram.com/default/hot/%E2%88%9E/local;
+    }
+
+    # Anubis challenge assets — must go to Anubis, not frp
+    location ^~ /.within.website/ {
+        proxy_pass http://127.0.0.1:8923;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+
+    # Static assets — aggressive cache, bypass Anubis (direct to frp)
+    location ~* \.(js|css|png|jpg|jpeg|gif|ico|svg|woff2?|ttf|webp|avif)$ {
+        proxy_pass http://127.0.0.1:8080;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+
+        proxy_cache static_cache;
+        proxy_cache_valid 200 7d;
+        expires 30d;
+        add_header X-Cache-Status $upstream_cache_status;
+    }
+
+    # Everything else — through Anubis PoW challenge
     location / {
-        proxy_pass https://origin.tardigram.com;
-        proxy_ssl_server_name on;            # SNI para que CF devuelva el cert correcto
-        proxy_set_header Host tardigram.com;  # El backend recibe el Host original
+        proxy_pass http://127.0.0.1:8923;
+        proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto $scheme;
@@ -85,14 +114,38 @@ server {
     add_header X-Frame-Options SAMEORIGIN;
     add_header X-Content-Type-Options nosniff;
 
-    location / {
-        proxy_pass https://origin.elpapeo.com;
-        proxy_ssl_server_name on;
-        proxy_set_header Host elpapeo.com;
+    # Anubis challenge assets — must go to Anubis, not frp
+    location ^~ /.within.website/ {
+        proxy_pass http://127.0.0.1:8923;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+
+    # Static assets — aggressive cache, bypass Anubis (direct to frp)
+    location ~* \.(js|css|png|jpg|jpeg|gif|ico|svg|woff2?|ttf|webp|avif)$ {
+        proxy_pass http://127.0.0.1:8080;
+        proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto $scheme;
 
+        proxy_cache static_cache;
+        proxy_cache_valid 200 7d;
+        expires 30d;
+        add_header X-Cache-Status $upstream_cache_status;
+    }
+
+    # Everything else — through Anubis PoW challenge
+    location / {
+        proxy_pass http://127.0.0.1:8923;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+
+        # WebSocket support
         proxy_http_version 1.1;
         proxy_set_header Upgrade $http_upgrade;
         proxy_set_header Connection "upgrade";
