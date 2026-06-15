@@ -149,11 +149,12 @@ curl localhost:8080/status    # → estado completo en JSON
 npm test
 ```
 
-55 tests cubriendo:
+61 tests cubriendo:
 - Lógica de evaluación de futbol (majority vote, umbral, staleness, deduplicación por ISP)
 - Cliente de Cloudflare API (parsing de respuestas, headers de auth, reintentos)
 - Máquina de estados del switcher (todas las transiciones: normal, watching, fallback, restoring)
-- Verificación de salud con contenido HTML (`health_check_string`)
+- Verificación de salud con contenido HTML (`health_check_string`) y pineado a la IP del fallback
+- GET pineado (SNI/Host + redirect + timeout) contra un servidor HTTPS local
 - Checker de `/cdn-cgi/trace` (parseo, errores, checks en paralelo)
 
 ## Endpoints HTTP
@@ -232,6 +233,8 @@ Ejemplo de respuesta de `/status`:
 
 **Verificación de contenido**: El health check después de un switch no solo verifica status HTTP 200, sino que busca un string esperado en el HTML (`health_check_string`). Esto detecta páginas de error o contenido incorrecto.
 
+**Health check pineado en fallback**: Cuando el registro está en fallback, el health check NO resuelve por DNS (que justo tras el switch sigue cacheado apuntando al edge de Cloudflare, bloqueado) sino que **conecta directo a la IP del VPS** manteniendo SNI y Host = dominio (equivalente a `curl --resolve`), siguiendo el redirect de la home y forzando IPv4. Así verifica el camino real del fallback (VPS → Anubis → backend) en vez de colgarse contra CF. Ver `src/httpcheck.js`.
+
 **Majority vote**: Se evalúa el último `stateChange` de cada ISP. Si la proporción de ISPs con `state: true` (bloqueado) es >= `FOOTBALL_THRESHOLD`, se activa el switch. Por defecto el umbral es 0.5 (mayoría simple).
 
 **Staleness check**: Si `lastUpdate` del endpoint de hayahora tiene más de 30 minutos de antigüedad, se considera dato obsoleto y no se actúa (se retiene el estado anterior).
@@ -248,29 +251,32 @@ Ejemplo de respuesta de `/status`:
 
 ## Nginx reverse proxy (VPS)
 
-El directorio `nginx/` contiene un reverse proxy listo para desplegar en un VPS. Es el servidor al que apuntan los registros DNS cuando el servicio activa el fallback.
+El directorio `nginx/` contiene la configuración del reverse proxy del VPS. Es el servidor al que apuntan los registros DNS cuando el servicio activa el fallback. En producción corre como servicio de sistema en el VPS (`/etc/nginx/`); el `docker compose` incluido es una alternativa equivalente para levantarlo en local o en un VPS nuevo.
 
-nginx conecta al backend via HTTPS al subdominio `origin.*` de Cloudflare, que siempre apunta al Argo Tunnel. El tramo es HTTPS end-to-end sin necesidad de Cloudflare Origin Certificates en el VPS (nginx habla con el edge de CF que tiene cert público estándar).
+El VPS termina TLS (Let's Encrypt) y enruta al backend a través de un túnel **frp**, con **Anubis** (proof-of-work) delante para filtrar bots. Los assets estáticos se sirven desde caché saltándose Anubis. No hace falta un Cloudflare Origin Certificate en el VPS.
 
 ```
 Normal (sin fútbol):
   Cliente (ES) → Cloudflare → Argo Tunnel → Backend
 
 Fútbol (bloqueo activo):
-  Cliente (ES) → VPS nginx (DE) → origin.dominio.com (CF edge) → Argo Tunnel → Backend
-                 ↑ Let's Encrypt    ↑ CF public SSL                ↑ tunnel cifrado
+  Cliente (ES) → VPS nginx:443 (TLS) → Anubis :8923 (PoW) → frp :8080 → HAProxy → Backend
+                 ↑ Let's Encrypt
+  Assets estáticos: VPS nginx → frp :8080 (directo, desde caché)
 ```
 
-### Prerequisito en Cloudflare
+### Redirect de la home
 
-Para cada dominio, crear un subdominio `origin` que apunte al tunnel y **nunca sea modificado** por el switchover service:
+Cloudflare aplica una *Redirect Rule* que manda la home (`/`) al feed local (`/default/hot/∞/local`). Esa regla vive en el edge de CF, así que durante el fallback desaparecería. El VPS la replica con un `location = /` (302 exacto a la raíz) para que el redirect siga existiendo cuando el tráfico no pasa por Cloudflare.
 
-| Registro | Tipo | Contenido | Proxied | Modificado por switchover? |
-|----------|------|-----------|---------|---------------------------|
-| `tardigram.com` | CNAME | `xxx.cfargotunnel.com` | Si | Si (cambia a A record durante futbol) |
-| `origin.tardigram.com` | CNAME | `xxx.cfargotunnel.com` | Si | **No (nunca se toca)** |
+### Prerequisito en Cloudflare (`origin.*`)
 
-nginx usa `origin.tardigram.com` como upstream, que siempre resuelve a Cloudflare y pasa por el tunnel. El servicio también usa `origin.*` para verificar que CF es accesible antes de restaurar el DNS.
+Para cada dominio, crear un subdominio `origin` proxied que apunte al tunnel y **nunca sea modificado** por el switchover service. El servicio lo usa como sonda para verificar que CF vuelve a ser accesible (`origin.{domain}/cdn-cgi/trace`) antes de restaurar el DNS:
+
+| Registro | Tipo | Proxied | Modificado por switchover? |
+|----------|------|---------|---------------------------|
+| `tardigram.com` | CNAME → tunnel | Sí | Sí (cambia a A → IP del VPS durante el bloqueo) |
+| `origin.tardigram.com` | CNAME → tunnel | Sí | **No (nunca se toca)** |
 
 ### Setup en el VPS
 
@@ -292,12 +298,12 @@ docker compose up -d
 
 Para cada dominio nuevo:
 
-1. Crear `origin.dominio.com` en Cloudflare (CNAME al tunnel, proxied ON)
+1. Crear `origin.dominio.com` en Cloudflare (CNAME al tunnel, proxied ON) para la sonda de restore
 2. Agregar en `conf.d/domains.conf`:
    - Un `server` en puerto 80 para el ACME challenge + redirect a HTTPS
-   - Un `server` en puerto 443 con `proxy_pass https://origin.dominio.com`
+   - Un `server` en puerto 443 que enrute a Anubis (`127.0.0.1:8923`) y los estáticos a frp (`127.0.0.1:8080`)
 
-Ver el ejemplo comentado en `domains.conf.example`.
+Ver el ejemplo comentado en `domains.conf.example` (refleja la config real de producción).
 
 ### Renovación de certificados
 
@@ -313,34 +319,32 @@ CERTBOT_EMAIL=tu@email.com CERTBOT_STAGING=1 ./init-certs.sh tardigram.com
 
 ## Despliegue en Kubernetes
 
-### Via ArgoCD (recomendado)
+Corre en el cluster `arenero`, namespace `monitoring` (definido en `k8s/overlays/prod/kustomization.yaml`), desplegado por ArgoCD desde el repo `arenero`.
+
+Antes del primer sync, crear el secret de GHCR en el namespace:
 
 ```bash
-kubectl apply -f argocd/application.yaml
-```
-
-Antes del primer sync, crear el namespace y el secret de GHCR:
-
-```bash
-kubectl create namespace cloudflare-switchover-prod
-
 kubectl create secret docker-registry ghcr-login-secret \
   --docker-server=ghcr.io \
   --docker-username=<github-user> \
   --docker-password=<github-pat> \
-  -n cloudflare-switchover-prod
+  -n monitoring
 ```
 
 El secreto con las credenciales (`cloudflare-switchover-secret`) se gestiona via `k8s/overlays/prod/secret.yaml` — actualizar los valores antes de hacer commit.
 
 ### CI/CD
 
-El workflow `.github/workflows/build-deploy.yaml` se dispara en push a `main` con cambios en `src/**`, `package*.json`, `Dockerfile` o `k8s/**`:
+Dos workflows en push a `main`:
 
-1. Build y push de imagen a GHCR con tag `sha` + `latest`
-2. Sync de `k8s/base/` y overlays (excepto `kustomization.yaml`) al repo `arenero`
-3. Actualización del image tag en `arenero/cloudflare-switchover/k8s/overlays/prod/kustomization.yaml`
-4. ArgoCD detecta el cambio y sincroniza automáticamente
+- **Release** (`.github/workflows/release.yaml`): semantic-release analiza los commits, sube la versión en `package.json`, genera `CHANGELOG.md` y crea el tag `vX.Y.Z`.
+- **Build and Deploy** (`.github/workflows/build-deploy.yaml`):
+  1. Se dispara en el **tag `v*`** que crea Release (la imagen se construye del commit ya bumpeado, así reporta la versión correcta) y en push a `main` para cambios solo-infra (`Dockerfile`, `k8s/**`).
+  2. Build y push de imagen a GHCR con tag `sha` + `latest`, inyectando `APP_VERSION` (leída de `package.json`) como build-arg.
+  3. Sync de `k8s/` al repo `arenero` y actualización del image tag en el overlay de prod.
+  4. ArgoCD detecta el cambio y sincroniza automáticamente.
+
+> La versión que el servicio reporta al arrancar viene de `APP_VERSION` (inyectada en el build). Construir desde el tag evita la carrera por la que la imagen quedaba una versión por detrás del release.
 
 ## Estructura
 
@@ -354,13 +358,15 @@ cloudflare-switchover/
 │   ├── notifier.js     # Telegram Bot API + Slack webhook
 │   ├── switcher.js     # Orquestador: máquina de estados + DNS switch + verify + notify
 │   ├── trace.js        # Checker de Cloudflare /cdn-cgi/trace
+│   ├── httpcheck.js    # GET pineado a la IP del fallback (SNI/Host = dominio) para el health check
 │   ├── health.js       # Plugin Fastify: /healthz, /readyz, /status, /api/events, dashboard
 │   └── dashboard.js    # HTML/CSS/JS inline para el dashboard web
 ├── test/
 │   ├── poller.test.js
 │   ├── cloudflare.test.js
 │   ├── switcher.test.js
-│   └── trace.test.js
+│   ├── trace.test.js
+│   └── httpcheck.test.js
 ├── k8s/
 │   ├── base/           # Deployment + ConfigMap + Service + Ingress
 │   └── overlays/prod/  # Namespace, secrets, imagePullSecrets, image tag
