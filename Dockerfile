@@ -17,6 +17,10 @@ WORKDIR /app
 COPY --from=builder --chown=nodejs:nodejs /app/node_modules ./node_modules
 COPY --chown=nodejs:nodejs . .
 
+# Versión real inyectada por el build (la que semantic-release va a publicar).
+ARG APP_VERSION=
+ENV APP_VERSION=$APP_VERSION
+
 USER nodejs
 
 EXPOSE 8080

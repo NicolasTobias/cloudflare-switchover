@@ -8,7 +8,10 @@ const { Switcher } = require('./switcher');
 const { fetchHayaHora, evaluateFootball } = require('./poller');
 const { notify } = require('./notifier');
 const healthRoutes = require('./health');
-const { version } = require('../package.json');
+// La imagen se construye del commit ANTES de que semantic-release suba la
+// versión en package.json, así que el build inyecta APP_VERSION (la versión que
+// semantic-release publicará, calculada con --dry-run). Fallback a package.json.
+const version = process.env.APP_VERSION || require('../package.json').version;
 
 async function main() {
   const log = pino({ level: process.env.LOG_LEVEL || 'info' });
