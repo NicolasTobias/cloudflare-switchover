@@ -425,6 +425,67 @@ describe('Switcher', () => {
       assert.equal(results[0].contentOk, false);
     });
 
+    it('en fallback verifica pineando a la IP del VPS, no por DNS', async () => {
+      // Registro ya en fallback (A → IP del VPS, proxied=false)
+      const cf = createMockCf([
+        { id: 'rec1', name: 'tardigram.com', type: 'A', proxied: false, content: '5.161.1.1' },
+      ]);
+      const switcher = new Switcher(createConfig(), cf, mockLog);
+      await switcher.init();
+      assert.equal(switcher.state, STATES.FALLBACK);
+
+      // Si tocara el DNS (fetch) el test fallaría: lo dejamos explotando.
+      globalThis.fetch = async () => { throw new Error('no debe usar DNS en fallback'); };
+
+      const pinnedCalls = [];
+      switcher._fetchPinned = async (domain, ip, opts) => {
+        pinnedCalls.push({ domain, ip, opts });
+        return { status: 200, body: '<html><title>Tardigram</title></html>' };
+      };
+
+      const results = await switcher._verifyHealth();
+      assert.equal(pinnedCalls.length, 1);
+      assert.equal(pinnedCalls[0].domain, 'tardigram.com');
+      assert.equal(pinnedCalls[0].ip, '5.161.1.1'); // la IP del fallback, no el DNS
+      assert.equal(results[0].status, 200);
+      assert.equal(results[0].contentOk, true);
+      assert.equal(results[0].via, 'fallback-ip');
+    });
+
+    it('en estado normal verifica por DNS (fetch), no pineado', async () => {
+      const cf = createMockCf([
+        { id: 'rec1', name: 'tardigram.com', type: 'CNAME', proxied: true, content: 'xxx.cfargotunnel.com' },
+      ]);
+      const switcher = new Switcher(createConfig(), cf, mockLog);
+      await switcher.init();
+
+      switcher._fetchPinned = async () => { throw new Error('no debe pinear en normal'); };
+      globalThis.fetch = async () => ({
+        ok: true, status: 200, text: async () => '<html><title>Tardigram</title></html>',
+      });
+
+      const results = await switcher._verifyHealth();
+      assert.equal(results[0].status, 200);
+      assert.equal(results[0].contentOk, true);
+      assert.equal(results[0].via, 'dns');
+    });
+
+    it('reporta error (no cuelga) si el check pineado del fallback falla', async () => {
+      const cf = createMockCf([
+        { id: 'rec1', name: 'tardigram.com', type: 'A', proxied: false, content: '5.161.1.1' },
+      ]);
+      const switcher = new Switcher(createConfig(), cf, mockLog);
+      await switcher.init();
+
+      switcher._fetchPinned = async () => { throw new Error('timeout after 10000ms'); };
+
+      const results = await switcher._verifyHealth();
+      assert.equal(results[0].status, 'error');
+      assert.equal(results[0].contentOk, false);
+      assert.equal(results[0].via, 'fallback-ip');
+      assert.match(results[0].error, /timeout/);
+    });
+
     it('returns contentOk=null when no health_check_string', async () => {
       const config = createConfig({
         domainRecords: [{

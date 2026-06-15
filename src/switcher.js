@@ -2,6 +2,7 @@
 
 const { notify } = require('./notifier');
 const { checkAllTraces } = require('./trace');
+const { fetchPinned } = require('./httpcheck');
 
 const STATES = {
   NORMAL: 'normal',
@@ -25,6 +26,8 @@ class Switcher {
     this.consecutiveErrors = 0;
     this.eventLog = [];
     this.startedAt = new Date().toISOString();
+    // Inyectable para tests; pinea la conexión a la IP del fallback (VPS).
+    this._fetchPinned = fetchPinned;
   }
 
   addEvent(type, detail = {}) {
@@ -371,20 +374,35 @@ class Switcher {
     const results = [];
     for (const rec of this.records) {
       const domain = rec.recordName;
+      // ¿El registro apunta ahora al fallback (VPS)? Entonces NO podemos fiarnos
+      // del DNS (todavía cacheado en el edge de CF, bloqueado): pineamos a la IP
+      // del VPS para verificar el camino real (VPS → Anubis → backend).
+      const inFallback = rec.currentProxied === false
+        && rec.currentContent === rec.fallbackContent;
       const start = Date.now();
       try {
-        const res = await fetch(`https://${domain}`, {
-          signal: AbortSignal.timeout(10_000),
-        });
-        const body = await res.text();
+        let status;
+        let body;
+        if (inFallback) {
+          ({ status, body } = await this._fetchPinned(domain, rec.fallbackContent, {
+            timeoutMs: 10_000,
+          }));
+        } else {
+          const res = await fetch(`https://${domain}`, {
+            signal: AbortSignal.timeout(10_000),
+          });
+          status = res.status;
+          body = await res.text();
+        }
         const contentOk = rec.healthCheckString
           ? body.includes(rec.healthCheckString)
           : null;
         results.push({
           domain,
-          status: res.status,
+          status,
           latencyMs: Date.now() - start,
           contentOk,
+          via: inFallback ? 'fallback-ip' : 'dns',
         });
       } catch (err) {
         results.push({
@@ -393,6 +411,7 @@ class Switcher {
           error: err.message,
           latencyMs: Date.now() - start,
           contentOk: false,
+          via: inFallback ? 'fallback-ip' : 'dns',
         });
       }
     }
@@ -404,7 +423,8 @@ class Switcher {
     const healthSummary = health
       .map(h => {
         const contentInfo = h.contentOk !== null ? ` content=${h.contentOk ? 'OK' : 'FAIL'}` : '';
-        return `  ${h.domain}: ${h.status} (${h.latencyMs}ms)${contentInfo}`;
+        const viaInfo = h.via ? ` via=${h.via}` : '';
+        return `  ${h.domain}: ${h.status} (${h.latencyMs}ms)${contentInfo}${viaInfo}`;
       })
       .join('\n');
 
