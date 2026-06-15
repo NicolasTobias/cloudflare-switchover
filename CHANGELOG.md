@@ -1,3 +1,15 @@
+# [1.4.0](https://github.com/NicolasTobias/cloudflare-switchover/compare/v1.3.2...v1.4.0) (2026-06-15)
+
+
+### Bug Fixes
+
+* **switcher:** verificar la salud del fallback pineando a la IP del VPS ([c07556a](https://github.com/NicolasTobias/cloudflare-switchover/commit/c07556a04231ef0503705ae670c0fa9b86639956))
+
+
+### Features
+
+* **nginx:** replicar redirect de home de CF en el fallback y sincronizar conf con producción ([5e0188b](https://github.com/NicolasTobias/cloudflare-switchover/commit/5e0188bd5789a3d1db88309353f6e8abf81c35f2))
+
 ## [1.3.2](https://github.com/NicolasTobias/cloudflare-switchover/compare/v1.3.1...v1.3.2) (2026-02-22)
 
 
