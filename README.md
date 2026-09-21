@@ -106,6 +106,9 @@ Array JSON con los registros DNS a gestionar. Cada entrada indica el dominio y a
 - `fallback_type`: tipo de registro durante el bloqueo (normalmente `A`)
 - `fallback_content`: IP directa del servidor de origen
 - `health_check_string` (opcional): string a buscar en el HTML del dominio para verificar que el contenido es correcto tras un switch. Si no se especifica, solo se verifica el status HTTP
+- `origin_domain` (opcional): sonda `origin.*` con la que se comprueba que Cloudflare vuelve a ser accesible antes de restaurar. Por defecto se deriva del dominio registrable del registro: `www.tardigram.com` y `status.tardigram.com` usan `origin.tardigram.com`. Solo hace falta indicarlo si la sonda no sigue esa convención
+
+Varios registros de la misma zona (`tardigram.com`, `www.tardigram.com`, `status.tardigram.com`) comparten sonda y se consulta una sola vez. El health check pineado sigue redirecciones a otro host del mismo dominio (el VPS redirige `www.tardigram.com` al apex), así que `health_check_string` funciona igual en `www`.
 
 El servicio lee el registro actual de Cloudflare al arrancar (ej. `CNAME xxx.cfargotunnel.com`) y lo guarda. Cuando detecta bloqueo de CF, lo reemplaza por el fallback. Cuando el bloqueo cesa y se verifica que CF es accesible, restaura el original.
 
@@ -271,7 +274,7 @@ Cloudflare aplica una *Redirect Rule* que manda la home (`/`) al feed local (`/d
 
 ### Prerequisito en Cloudflare (`origin.*`)
 
-Para cada dominio, crear un subdominio `origin` proxied que apunte al tunnel y **nunca sea modificado** por el switchover service. El servicio lo usa como sonda para verificar que CF vuelve a ser accesible (`origin.{domain}/cdn-cgi/trace`) antes de restaurar el DNS:
+Para cada zona (no para cada registro), crear un subdominio `origin` proxied que apunte al tunnel y **nunca sea modificado** por el switchover service. El servicio lo usa como sonda para verificar que CF vuelve a ser accesible (`origin.{domain}/cdn-cgi/trace`) antes de restaurar el DNS:
 
 | Registro | Tipo | Proxied | Modificado por switchover? |
 |----------|------|---------|---------------------------|

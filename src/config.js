@@ -28,6 +28,9 @@ function loadConfig() {
     if (rec.health_check_string !== undefined && typeof rec.health_check_string !== 'string') {
       throw new Error('health_check_string must be a string if provided');
     }
+    if (rec.origin_domain !== undefined && typeof rec.origin_domain !== 'string') {
+      throw new Error('origin_domain must be a string if provided');
+    }
   }
 
   return {

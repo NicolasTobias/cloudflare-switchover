@@ -10,7 +10,11 @@ configMapGenerator:
   - name: cloudflare-switchover-config
     behavior: merge
     literals:
-      - DOMAIN_RECORDS=[{"zone_id":"faec4689c05f781fb7f3c78ee7210b95","record_name":"tardigram.com","fallback_type":"A","fallback_content":"151.115.80.213","health_check_string":"Tardigram"},{"zone_id":"d389c9eb9447d54287732dae99c19df2","record_name":"elpapeo.com","fallback_type":"A","fallback_content":"151.115.80.213","health_check_string":"ElPapeo"}]
+      # www y status.* tambien se conmutan (2026-09-21): durante un partido se
+      # quedaban en Cloudflare, bloqueado por las ISP, y la gente no podia ni
+      # ver la pagina de estado. El VPS los sirve con el cert wildcard y los
+      # Ingress de Uptime Kuma; la sonda origin.* se deriva del apex.
+      - DOMAIN_RECORDS=[{"zone_id":"faec4689c05f781fb7f3c78ee7210b95","record_name":"tardigram.com","fallback_type":"A","fallback_content":"151.115.80.213","health_check_string":"Tardigram"},{"zone_id":"faec4689c05f781fb7f3c78ee7210b95","record_name":"www.tardigram.com","fallback_type":"A","fallback_content":"151.115.80.213","health_check_string":"Tardigram"},{"zone_id":"faec4689c05f781fb7f3c78ee7210b95","record_name":"status.tardigram.com","fallback_type":"A","fallback_content":"151.115.80.213","health_check_string":"Status"},{"zone_id":"d389c9eb9447d54287732dae99c19df2","record_name":"elpapeo.com","fallback_type":"A","fallback_content":"151.115.80.213","health_check_string":"ElPapeo"},{"zone_id":"d389c9eb9447d54287732dae99c19df2","record_name":"status.elpapeo.com","fallback_type":"A","fallback_content":"151.115.80.213","health_check_string":"Status"}]
 
 generatorOptions:
   disableNameSuffixHash: true

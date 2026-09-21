@@ -3,6 +3,7 @@
 const { notify } = require('./notifier');
 const { checkAllTraces } = require('./trace');
 const { fetchPinned } = require('./httpcheck');
+const { originDomainFor } = require('./domain');
 
 const STATES = {
   NORMAL: 'normal',
@@ -106,6 +107,7 @@ class Switcher {
         fallbackType: domainRec.fallback_type,
         fallbackContent: domainRec.fallback_content,
         healthCheckString: domainRec.health_check_string || null,
+        originDomain: originDomainFor(domainRec.record_name, domainRec.origin_domain),
       });
     }
 
@@ -246,7 +248,7 @@ class Switcher {
 
   async _attemptRestore() {
     // Check origin.{domain} — these always go through CF/Argo Tunnel
-    const originDomains = this.records.map(r => `origin.${r.recordName}`);
+    const originDomains = this._originDomains();
     const traces = await checkAllTraces(originDomains, this.log);
     const allOk = traces.every(t => t.available);
 
@@ -275,10 +277,14 @@ class Switcher {
     await this._verifyAndNotify(msg);
   }
 
+  /** Sondas origin.* únicas: varios registros de la misma zona comparten una. */
+  _originDomains() {
+    return [...new Set(this.records.map(r => r.originDomain))];
+  }
+
   async _fetchOriginInfo() {
     const results = [];
-    for (const rec of this.records) {
-      const originDomain = `origin.${rec.recordName}`;
+    for (const originDomain of this._originDomains()) {
       try {
         const res = await fetch(`https://${originDomain}`, {
           signal: AbortSignal.timeout(10_000),

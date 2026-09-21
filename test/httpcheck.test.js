@@ -18,6 +18,13 @@ describe('fetchPinned', () => {
       if (req.url === '/') {
         res.writeHead(302, { Location: 'https://localhost/feed' });
         res.end();
+      } else if (req.url === '/www') {
+        // Como el VPS con www.tardigram.com: redirige al apex (otro host, mismo dominio)
+        res.writeHead(302, { Location: 'https://example.test/feed' });
+        res.end();
+      } else if (req.url === '/away') {
+        res.writeHead(302, { Location: 'https://other.test/feed' });
+        res.end();
       } else if (req.url === '/feed') {
         // Eco del Host para comprobar que se preserva el vhost a través del redirect.
         res.writeHead(200, { 'Content-Type': 'text/html' });
@@ -44,6 +51,30 @@ describe('fetchPinned', () => {
     assert.equal(status, 200);
     assert.match(body, /title>OK</);
     assert.match(body, /host=localhost/);
+  });
+
+  // El cert del fixture es CN=localhost; para los tests con otros hosts se
+  // desactiva solo la comprobación de nombre (la cadena sigue validándose).
+  const otherHost = { ca, checkServerIdentity: () => undefined };
+
+  it('sigue un redirect a otro host del mismo dominio, pineado a la misma IP y con el Host nuevo', async () => {
+    const { status, body } = await fetchPinned('www.example.test', '127.0.0.1', {
+      path: '/www',
+      port,
+      requestOptions: otherHost,
+    });
+    assert.equal(status, 200);
+    assert.match(body, /host=example\.test/);
+  });
+
+  it('no persigue un redirect a otro dominio: devuelve el 3xx', async () => {
+    const { status, body } = await fetchPinned('www.example.test', '127.0.0.1', {
+      path: '/away',
+      port,
+      requestOptions: otherHost,
+    });
+    assert.equal(status, 302);
+    assert.equal(body, '');
   });
 
   it('aborta con timeout en vez de colgarse', async () => {

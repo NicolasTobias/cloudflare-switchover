@@ -386,6 +386,51 @@ describe('Switcher', () => {
       assert.equal(updates[0].content, '1.1.1.1');
       assert.equal(updates[1].content, '2.2.2.2');
     });
+
+    it('www y status.* usan la sonda origin.* del apex, una sola vez por zona', async () => {
+      const config = createConfig({
+        domainRecords: [
+          { zone_id: 'z1', record_name: 'tardigram.com', fallback_type: 'A', fallback_content: '1.1.1.1' },
+          { zone_id: 'z1', record_name: 'www.tardigram.com', fallback_type: 'A', fallback_content: '1.1.1.1' },
+          { zone_id: 'z2', record_name: 'status.elpapeo.com', fallback_type: 'A', fallback_content: '1.1.1.1' },
+        ],
+      });
+      const cfResponses = {
+        'tardigram.com': [{ id: 'r1', name: 'tardigram.com', type: 'CNAME', proxied: true, content: 't.cfargotunnel.com' }],
+        'www.tardigram.com': [{ id: 'r2', name: 'www.tardigram.com', type: 'CNAME', proxied: true, content: 'tardigram.com' }],
+        'status.elpapeo.com': [{ id: 'r3', name: 'status.elpapeo.com', type: 'CNAME', proxied: true, content: 'e.cfargotunnel.com' }],
+      };
+      const cf = {
+        calls: [],
+        listRecords: async (zoneId, name) => cfResponses[name],
+        updateRecord: async (zoneId, recordId, data) => {
+          cf.calls.push({ method: 'updateRecord', zoneId, recordId, ...data });
+          return { success: true, result: { id: recordId, ...data } };
+        },
+      };
+      const switcher = new Switcher(config, cf, mockLog);
+      await switcher.init();
+
+      globalThis.fetch = mockFetchAll({ traceOk: false });
+      await switcher.onPoll(true);
+      assert.equal(switcher.state, STATES.FALLBACK);
+
+      // Al restaurar, las sondas consultadas deben ser SOLO los origin.* de
+      // los apex, sin duplicar y sin inventar origin.www.* ni origin.status.*
+      const traced = [];
+      const base = mockFetchAll({ traceOk: true, originOk: true });
+      globalThis.fetch = async (url, opts) => {
+        if (url.includes('/cdn-cgi/trace')) traced.push(new URL(url).hostname);
+        return base(url, opts);
+      };
+      await switcher.onPoll(false);
+      assert.equal(switcher.state, STATES.NORMAL);
+      assert.deepEqual(traced.sort(), ['origin.elpapeo.com', 'origin.tardigram.com']);
+
+      // Y los tres registros se restauran a su original
+      const restores = cf.calls.filter(c => c.method === 'updateRecord').slice(3);
+      assert.deepEqual(restores.map(r => r.content).sort(), ['e.cfargotunnel.com', 't.cfargotunnel.com', 'tardigram.com']);
+    });
   });
 
   describe('_verifyHealth with content check', () => {
