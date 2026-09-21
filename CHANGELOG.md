@@ -1,3 +1,10 @@
+# [1.5.0](https://github.com/NicolasTobias/cloudflare-switchover/compare/v1.4.1...v1.5.0) (2026-09-21)
+
+
+### Features
+
+* **switcher:** conmutar www y status.* sin quedarse atascado en restoring ([728a99b](https://github.com/NicolasTobias/cloudflare-switchover/commit/728a99b246bd6735a7feef8866b7682a98d4dee5))
+
 ## [1.4.1](https://github.com/NicolasTobias/cloudflare-switchover/compare/v1.4.0...v1.4.1) (2026-06-15)
 
 
