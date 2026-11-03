@@ -1,3 +1,10 @@
+# [1.6.0](https://github.com/NicolasTobias/cloudflare-switchover/compare/v1.5.0...v1.6.0) (2026-11-03)
+
+
+### Features
+
+* **poller:** contar el bloqueo de la ISP de casa aunque no haya mayoria ([93abf84](https://github.com/NicolasTobias/cloudflare-switchover/commit/93abf847ccca511211c365420153417b75bdece5))
+
 # [1.5.0](https://github.com/NicolasTobias/cloudflare-switchover/compare/v1.4.1...v1.5.0) (2026-09-21)
 
 
