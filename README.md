@@ -78,6 +78,7 @@ cp .env.example .env
 | `HAYAHORA_URL` | No | `https://hayahora.futbol/estado/data.json` | URL del endpoint de estado |
 | `HEALTH_CHECK_PORT` | No | `8080` | Puerto del servidor HTTP de health checks |
 | `FOOTBALL_THRESHOLD` | No | `0.5` | Proporción mínima de ISPs con bloqueo para activar el switch |
+| `HOME_ISP` | No | — | ISP de la conexión de casa tal como la nombra hayahora (`Orange`, `Movistar`...). Si bloquea alguna IP a la que resuelven nuestros dominios, cuenta como bloqueo aunque no haya mayoría |
 | `TELEGRAM_BOT_TOKEN` | No | — | Token del bot de Telegram para notificaciones |
 | `TELEGRAM_CHAT_ID` | No | — | Chat ID de Telegram donde enviar notificaciones |
 | `TELEGRAM_THREAD_ID` | No | — | Thread ID para enviar al topic de un supergrupo |
@@ -239,6 +240,8 @@ Ejemplo de respuesta de `/status`:
 **Health check pineado en fallback**: Cuando el registro está en fallback, el health check NO resuelve por DNS (que justo tras el switch sigue cacheado apuntando al edge de Cloudflare, bloqueado) sino que **conecta directo a la IP del VPS** manteniendo SNI y Host = dominio (equivalente a `curl --resolve`), siguiendo el redirect de la home y forzando IPv4. Así verifica el camino real del fallback (VPS → Anubis → backend) en vez de colgarse contra CF. Ver `src/httpcheck.js`.
 
 **Majority vote**: Se evalúa el último `stateChange` de cada ISP. Si la proporción de ISPs con `state: true` (bloqueado) es >= `FOOTBALL_THRESHOLD`, se activa el switch. Por defecto el umbral es 0.5 (mayoría simple).
+
+**ISP de casa**: con `HOME_ISP` también se activa si esa ISP tiene bloqueada alguna IP a la que han resuelto nuestros dominios en las últimas 48 h, aunque el resto ya lo haya levantado. El 2026-11-01 Orange dejó `188.114.96.5` bloqueada 36 h después del partido; Cloudflare alterna esa IP con otras, así que el sitio fallaba a ratos para los clientes de Orange y el switchover, sin mayoría, no hacía nada. Como siempre, solo cambia el DNS si los traces confirman que Cloudflare no responde.
 
 **Staleness check**: Si `lastUpdate` del endpoint de hayahora tiene más de 30 minutos de antigüedad, se considera dato obsoleto y no se actúa (se retiene el estado anterior).
 

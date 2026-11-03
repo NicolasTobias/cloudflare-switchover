@@ -44,6 +44,7 @@ function loadConfig() {
     hayahoraUrl: process.env.HAYAHORA_URL || 'https://hayahora.futbol/estado/data.json',
     healthCheckPort: parseInt(process.env.HEALTH_CHECK_PORT, 10) || 8080,
     footballThreshold: parseFloat(process.env.FOOTBALL_THRESHOLD) || 0.5,
+    homeIsp: process.env.HOME_ISP || null,
   };
 }
 

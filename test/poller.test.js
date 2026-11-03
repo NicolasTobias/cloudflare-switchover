@@ -2,7 +2,7 @@
 
 const { describe, it } = require('node:test');
 const assert = require('node:assert/strict');
-const { evaluateFootball, STALENESS_THRESHOLD_MS } = require('../src/poller');
+const { evaluateFootball, homeIspBlocks, STALENESS_THRESHOLD_MS } = require('../src/poller');
 
 function makeData(ispStates, lastUpdate = new Date().toISOString().replace('T', ' ').slice(0, 19)) {
   const data = ispStates.map(([isp, state]) => ({
@@ -166,5 +166,49 @@ describe('evaluateFootball', () => {
     assert.equal(evaluateFootball(data, 0.8), false);
     // 1/3 = 0.33 >= 0.3 → true
     assert.equal(evaluateFootball(data, 0.3), true);
+  });
+});
+
+describe('bloqueo de la ISP de casa', () => {
+  const now = new Date().toISOString();
+  const lastUpdate = now.replace('T', ' ').slice(0, 19);
+  const entry = (ip, isp, state) => ({ ip, isp, description: 'Cloudflare', stateChanges: [{ timestamp: now, state }] });
+  // Caso real del 2026-11-03: solo Orange (y Masmovil) seguian bloqueando.
+  const data = {
+    lastUpdate,
+    data: [
+      entry('188.114.96.5', 'Orange', true),
+      entry('188.114.96.5', 'Masmovil', true),
+      entry('188.114.96.5', 'Movistar', false),
+      entry('188.114.96.5', 'DIGI', false),
+      entry('188.114.96.5', 'Vodafone', false),
+      entry('104.16.0.1', 'Orange', false),
+    ],
+  };
+
+  it('activa aunque no haya mayoria si la ISP de casa bloquea una IP nuestra', () => {
+    assert.equal(evaluateFootball(data, 0.5, { isp: 'Orange', ips: new Set(['188.114.96.5']) }), true);
+  });
+
+  it('no activa si la IP bloqueada no es nuestra', () => {
+    assert.equal(evaluateFootball(data, 0.5, { isp: 'Orange', ips: new Set(['104.21.27.46']) }), false);
+  });
+
+  it('no activa si la ISP de casa es otra', () => {
+    assert.equal(evaluateFootball(data, 0.5, { isp: 'Movistar', ips: new Set(['188.114.96.5']) }), false);
+  });
+
+  it('sin HOME_ISP se comporta como antes', () => {
+    assert.equal(evaluateFootball(data, 0.5), false);
+  });
+
+  it('respeta los datos caducados', () => {
+    const stale = { ...data, lastUpdate: '2020-01-01 00:00:00' };
+    assert.equal(evaluateFootball(stale, 0.5, { isp: 'Orange', ips: new Set(['188.114.96.5']) }), null);
+  });
+
+  it('homeIspBlocks mira el ultimo cambio de estado', () => {
+    const e = { ip: '188.114.96.5', isp: 'Orange', stateChanges: [{ timestamp: now, state: true }, { timestamp: now, state: false }] };
+    assert.equal(homeIspBlocks([e], 'Orange', new Set(['188.114.96.5'])), false);
   });
 });

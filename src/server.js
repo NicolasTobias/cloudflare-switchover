@@ -1,11 +1,12 @@
 'use strict';
 
+const dns = require('node:dns').promises;
 const pino = require('pino');
 const Fastify = require('fastify');
 const { loadConfig } = require('./config');
 const { CloudflareClient } = require('./cloudflare');
 const { Switcher } = require('./switcher');
-const { fetchHayaHora, evaluateFootball } = require('./poller');
+const { fetchHayaHora, evaluateFootball, homeIspBlocks } = require('./poller');
 const { notify } = require('./notifier');
 const healthRoutes = require('./health');
 // La imagen se construye del commit ANTES de que semantic-release suba la
@@ -48,6 +49,30 @@ async function main() {
     log
   );
 
+  // IPs de Cloudflare a las que han resuelto nuestros dominios en las ultimas
+  // 48 h. Se acumulan porque Cloudflare alterna juegos de IPs y, en fallback,
+  // el DNS apunta al VPS y ya no las veriamos.
+  const seenIps = new Map();
+  const SEEN_IPS_TTL_MS = 48 * 60 * 60 * 1000;
+  const fallbackIps = new Set(config.domainRecords.map(r => r.fallback_content));
+
+  async function currentCloudflareIps() {
+    const now = Date.now();
+    await Promise.all(switcher.records.map(async r => {
+      try {
+        for (const ip of await dns.resolve4(r.recordName)) {
+          if (!fallbackIps.has(ip)) seenIps.set(ip, now);
+        }
+      } catch (err) {
+        log.debug({ err, domain: r.recordName }, 'resolve_failed');
+      }
+    }));
+    for (const [ip, ts] of seenIps) {
+      if (now - ts > SEEN_IPS_TTL_MS) seenIps.delete(ip);
+    }
+    return new Set(seenIps.keys());
+  }
+
   // Poll function
   async function poll() {
     log.info('poll_started');
@@ -58,7 +83,11 @@ async function main() {
         log.warn({ forced: hayFutbol }, 'force_football_override');
       } else {
         const data = await fetchHayaHora(config.hayahoraUrl);
-        hayFutbol = evaluateFootball(data, config.footballThreshold);
+        const home = { isp: config.homeIsp, ips: config.homeIsp ? await currentCloudflareIps() : null };
+        hayFutbol = evaluateFootball(data, config.footballThreshold, home);
+        if (hayFutbol && home.isp && homeIspBlocks(data.data || [], home.isp, home.ips)) {
+          log.warn({ isp: home.isp }, 'home_isp_blocking_our_ips');
+        }
 
         if (hayFutbol === null) {
           log.warn('hayahora_data_stale');

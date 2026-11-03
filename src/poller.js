@@ -19,7 +19,7 @@ async function fetchHayaHora(url) {
  * Returns true if the proportion of ISPs reporting blocking >= threshold.
  * Returns null if data is stale (lastUpdate > 30min old).
  */
-function evaluateFootball(data, threshold) {
+function evaluateFootball(data, threshold, home = {}) {
   const force = process.env.FORCE_FOOTBALL;
   if (force === 'true') return true;
   if (force === 'false') return false;
@@ -55,6 +55,11 @@ function evaluateFootball(data, threshold) {
 
   if (ispStates.size === 0) return null;
 
+  // Un bloqueo de la ISP de casa sobre una IP nuestra cuenta aunque no llegue
+  // a la mayoria: Orange dejo 188.114.96.5 bloqueada 36 h despues del partido
+  // (2026-11-01 a 2026-11-03) y las demas ISP ya lo habian levantado.
+  if (homeIspBlocks(entries, home.isp, home.ips)) return true;
+
   let blockedCount = 0;
   for (const [, state] of ispStates) {
     if (state.state === true) blockedCount++;
@@ -63,4 +68,14 @@ function evaluateFootball(data, threshold) {
   return blockedCount / ispStates.size >= threshold;
 }
 
-module.exports = { fetchHayaHora, evaluateFootball, STALENESS_THRESHOLD_MS };
+/**
+ * True si `isp` tiene bloqueada (ultimo stateChange a true) alguna de `ips`.
+ */
+function homeIspBlocks(entries, isp, ips) {
+  if (!isp || !ips || ips.size === 0) return false;
+  return entries.some(e =>
+    e.isp === isp && ips.has(e.ip) && e.stateChanges && e.stateChanges.length > 0
+    && e.stateChanges[e.stateChanges.length - 1].state === true);
+}
+
+module.exports = { fetchHayaHora, evaluateFootball, homeIspBlocks, STALENESS_THRESHOLD_MS };
