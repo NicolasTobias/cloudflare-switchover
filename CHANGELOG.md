@@ -1,3 +1,10 @@
+# [1.7.0](https://github.com/NicolasTobias/cloudflare-switchover/compare/v1.6.0...v1.7.0) (2026-11-15)
+
+
+### Features
+
+* **notifier:** avisar via el Alertmanager de Grafana Cloud en vez de Telegram ([062e6dd](https://github.com/NicolasTobias/cloudflare-switchover/commit/062e6dd293f3fbe214111a9f52a634e6150254e5))
+
 # [1.6.0](https://github.com/NicolasTobias/cloudflare-switchover/compare/v1.5.0...v1.6.0) (2026-11-03)
 
 
