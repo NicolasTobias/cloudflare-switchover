@@ -7,7 +7,7 @@ const { loadConfig } = require('./config');
 const { CloudflareClient } = require('./cloudflare');
 const { Switcher } = require('./switcher');
 const { fetchHayaHora, evaluateFootball, homeIspBlocks } = require('./poller');
-const { notify } = require('./notifier');
+const { notify, reportState } = require('./notifier');
 const healthRoutes = require('./health');
 // La imagen se construye del commit ANTES de que semantic-release suba la
 // versión en package.json, así que el build inyecta APP_VERSION (la versión que
@@ -96,14 +96,16 @@ async function main() {
 
       await switcher.onPoll(hayFutbol);
       switcher.clearPollError();
+      await reportState(config, switcher.state, config.pollInterval, log);
     } catch (err) {
       log.error({ err }, 'poll_failed');
       const shouldNotify = switcher.recordPollError(err);
       if (shouldNotify) {
         await notify(
           config,
-          `ALERTA: ${switcher.consecutiveErrors} errores consecutivos en polling\nUltimo error: ${err.message}`,
-          log
+          `${switcher.consecutiveErrors} errores consecutivos en polling\nUltimo error: ${err.message}`,
+          log,
+          { alertname: 'SwitchoverPollingFallando', severity: 'warning' }
         );
       }
     }

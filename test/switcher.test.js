@@ -37,9 +37,7 @@ function createConfig(overrides = {}) {
         health_check_string: 'Tardigram',
       },
     ],
-    telegramBotToken: null,
-    telegramChatId: null,
-    slackWebhookUrl: null,
+    alertmanagerUrl: null,
     ...overrides,
   };
 }

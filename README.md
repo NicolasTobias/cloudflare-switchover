@@ -18,7 +18,7 @@ hayahora.futbol              Cloudflare API
   (majority vote ISPs) │
                        └─ A ip_directa → CNAME tunnel  ← CF accesible (origin trace OK)
                               │    (proxied=false → true)
-                         notify() → Telegram + Slack
+                         notify() → Alertmanager
 ```
 
 ### Máquina de estados
@@ -52,7 +52,7 @@ El servicio usa 4 estados para evitar switcheos prematuros:
 4. En `watching`, se verifica `/cdn-cgi/trace` en cada dominio. Si el trace falla (CF bloqueado), se hace el switch DNS a fallback
 5. Cuando hayahora dice no-fútbol, se entra en `restoring` y se verifica que `origin.{domain}` (que siempre pasa por CF) responda correctamente
 6. Solo cuando el origin trace vuelve OK se restaura el DNS original
-7. Se envían notificaciones por Telegram y/o Slack en cada cambio de estado, incluyendo resultado del trace y verificación de contenido HTML
+7. Cada cambio de estado se envía como alerta al Alertmanager de Grafana Cloud (resumen en la primera línea, detalle del trace y del health check en la descripción). Mientras el estado no es `normal`, `SwitchoverModoLiga` sigue disparando
 
 ## Requisitos
 
@@ -79,10 +79,9 @@ cp .env.example .env
 | `HEALTH_CHECK_PORT` | No | `8080` | Puerto del servidor HTTP de health checks |
 | `FOOTBALL_THRESHOLD` | No | `0.5` | Proporción mínima de ISPs con bloqueo para activar el switch |
 | `HOME_ISP` | No | — | ISP de la conexión de casa tal como la nombra hayahora (`Orange`, `Movistar`...). Si bloquea alguna IP a la que resuelven nuestros dominios, cuenta como bloqueo aunque no haya mayoría |
-| `TELEGRAM_BOT_TOKEN` | No | — | Token del bot de Telegram para notificaciones |
-| `TELEGRAM_CHAT_ID` | No | — | Chat ID de Telegram donde enviar notificaciones |
-| `TELEGRAM_THREAD_ID` | No | — | Thread ID para enviar al topic de un supergrupo |
-| `SLACK_WEBHOOK_URL` | No | — | Webhook de Slack para notificaciones |
+| `ALERTMANAGER_URL` | No | — | Alertmanager de Grafana Cloud (`https://alertmanager-prod-eu-west-2.grafana.net`). Sin él no se avisa |
+| `ALERTMANAGER_USER` | No | — | ID de la instancia del Alertmanager (usuario de basic auth) |
+| `ALERTMANAGER_TOKEN` | No | — | Token de Cloud Access Policy con `alerts:write` |
 | `LOG_LEVEL` | No | `info` | Nivel de log de Pino (`debug`, `info`, `warn`, `error`) |
 | `FORCE_FOOTBALL` | No | — | Override para testing: `true` fuerza estado futbol, `false` fuerza no-futbol. Omitir para comportamiento normal |
 
@@ -199,7 +198,7 @@ curl -X POST localhost:8080/test/force-football \
 curl -X DELETE localhost:8080/test/force-football
 ```
 
-El force bypasea la máquina de estados: no verifica traces ni origin, cambia el DNS inmediatamente y envía notificación a Telegram/Slack. El override persiste entre polls hasta que se limpie con DELETE o se reinicie el servicio.
+El force bypasea la máquina de estados: no verifica traces ni origin, cambia el DNS inmediatamente y envía la alerta al Alertmanager. El override persiste entre polls hasta que se limpie con DELETE o se reinicie el servicio.
 
 También se puede usar la variable de entorno `FORCE_FOOTBALL` al arrancar:
 
@@ -251,7 +250,7 @@ Ejemplo de respuesta de `/status`:
 
 **Reintentos en Cloudflare API**: 3 intentos con backoff exponencial (2s, 4s, 8s) en caso de error.
 
-**Notificaciones**: Se envían a Telegram y/o Slack en cada cambio de estado, incluyendo resultado del trace de CF, extracto HTML del origin, y health check de los dominios con verificación de contenido. Tras 3 errores de polling consecutivos se envía una alerta.
+**Notificaciones**: desde 2026-11-15 el switchover no habla con Telegram: cada cambio de estado es una alerta `SwitchoverEvento` (`severity=info`, `service=casa`, `source=switchover`) que se resuelve sola a los 10 min; tras 3 errores de polling consecutivos, `SwitchoverPollingFallando` (`warning`). Mientras el estado no es `normal`, `SwitchoverModoLiga` sigue disparando y el Alertmanager la usa para inhibir los sondeos hechos desde casa. A quién y cuándo se avisa lo decide el Alertmanager (repo tardigram, `monitoring/alertmanager/`).
 
 **Logs silenciados en health checks**: Las rutas `/healthz` y `/readyz` usan `logLevel: 'silent'` en Fastify para evitar ruido de los probes de K8s (cada 10s liveness, cada 30s readiness).
 
@@ -361,7 +360,7 @@ cloudflare-switchover/
 │   ├── config.js       # Carga y validación de env vars
 │   ├── poller.js       # Fetch hayahora + evaluateFootball (majority vote)
 │   ├── cloudflare.js   # Cliente API Cloudflare (listRecords, updateRecord, reintentos)
-│   ├── notifier.js     # Telegram Bot API + Slack webhook
+│   ├── notifier.js     # Alertas al Alertmanager de Grafana Cloud
 │   ├── switcher.js     # Orquestador: máquina de estados + DNS switch + verify + notify
 │   ├── trace.js        # Checker de Cloudflare /cdn-cgi/trace
 │   ├── httpcheck.js    # GET pineado a la IP del fallback (SNI/Host = dominio) para el health check
