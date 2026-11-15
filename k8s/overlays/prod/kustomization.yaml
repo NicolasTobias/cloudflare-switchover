@@ -15,6 +15,8 @@ resources:
 # su propio cert (certbot dns-cloudflare) en 10-auth-level5.conf. origin_domain reutiliza la sonda
 # origin.tardigram.com (solo comprueba que Cloudflare es alcanzable); sin ella se derivaria
 # origin.level5.dev, que no existe, y el cambiador no podria restaurar NINGUN dominio.
+# status.* (2026-11-15): sin health_check_string. Ya no es Kuma sino un 302 al
+# dashboard publico de Grafana (en Cloudflare y en el nginx del VPS).
 # HOME_ISP (2026-11-03): la linea de casa es Jazztel, que hayahora cuenta como
 # Orange. Orange dejo 188.114.96.5 bloqueada 36 h tras el partido del 1-nov y,
 # sin mayoria de ISPs, el switchover no conmutaba: Kuma y blackbox fallaban a
@@ -28,7 +30,7 @@ configMapGenerator:
   - HOME_ISP=Orange
   - ALERTMANAGER_URL=https://alertmanager-prod-eu-west-2.grafana.net
   - ALERTMANAGER_USER=460425
-  - DOMAIN_RECORDS=[{"zone_id":"faec4689c05f781fb7f3c78ee7210b95","record_name":"tardigram.com","fallback_type":"A","fallback_content":"151.115.80.213","health_check_string":"Tardigram"},{"zone_id":"faec4689c05f781fb7f3c78ee7210b95","record_name":"www.tardigram.com","fallback_type":"A","fallback_content":"151.115.80.213","health_check_string":"Tardigram"},{"zone_id":"faec4689c05f781fb7f3c78ee7210b95","record_name":"status.tardigram.com","fallback_type":"A","fallback_content":"151.115.80.213","health_check_string":"Status"},{"zone_id":"d389c9eb9447d54287732dae99c19df2","record_name":"elpapeo.com","fallback_type":"A","fallback_content":"151.115.80.213","health_check_string":"ElPapeo"},{"zone_id":"d389c9eb9447d54287732dae99c19df2","record_name":"status.elpapeo.com","fallback_type":"A","fallback_content":"151.115.80.213","health_check_string":"Status"},{"zone_id":"92186120796fc3abe88aebbd8bf56633","record_name":"auth.level5.dev","fallback_type":"A","fallback_content":"151.115.80.213","health_check_string":"auth.level5.dev","origin_domain":"origin.tardigram.com"}]
+  - DOMAIN_RECORDS=[{"zone_id":"faec4689c05f781fb7f3c78ee7210b95","record_name":"tardigram.com","fallback_type":"A","fallback_content":"151.115.80.213","health_check_string":"Tardigram"},{"zone_id":"faec4689c05f781fb7f3c78ee7210b95","record_name":"www.tardigram.com","fallback_type":"A","fallback_content":"151.115.80.213","health_check_string":"Tardigram"},{"zone_id":"faec4689c05f781fb7f3c78ee7210b95","record_name":"status.tardigram.com","fallback_type":"A","fallback_content":"151.115.80.213"},{"zone_id":"d389c9eb9447d54287732dae99c19df2","record_name":"elpapeo.com","fallback_type":"A","fallback_content":"151.115.80.213","health_check_string":"ElPapeo"},{"zone_id":"d389c9eb9447d54287732dae99c19df2","record_name":"status.elpapeo.com","fallback_type":"A","fallback_content":"151.115.80.213"},{"zone_id":"92186120796fc3abe88aebbd8bf56633","record_name":"auth.level5.dev","fallback_type":"A","fallback_content":"151.115.80.213","health_check_string":"auth.level5.dev","origin_domain":"origin.tardigram.com"}]
   name: cloudflare-switchover-config
 
 generatorOptions:
