@@ -1,3 +1,10 @@
+## [1.7.1](https://github.com/NicolasTobias/cloudflare-switchover/compare/v1.7.0...v1.7.1) (2026-11-16)
+
+
+### Bug Fixes
+
+* restaurar el DNS aunque el servicio arranque en mitad de un partido ([b6bb246](https://github.com/NicolasTobias/cloudflare-switchover/commit/b6bb246b1afcc2f120c53d2f81c1358c18b9138e))
+
 # [1.7.0](https://github.com/NicolasTobias/cloudflare-switchover/compare/v1.6.0...v1.7.0) (2026-11-15)
 
 
