@@ -30,6 +30,7 @@ configMapGenerator:
   - HOME_ISP=Orange
   - ALERTMANAGER_URL=https://alertmanager-prod-eu-west-2.grafana.net
   - ALERTMANAGER_USER=460425
+  - NORMAL_CONTENT=22480a22-c09b-42b3-b79a-07c8059227a6.cfargotunnel.com
   - DOMAIN_RECORDS=[{"zone_id":"faec4689c05f781fb7f3c78ee7210b95","record_name":"tardigram.com","fallback_type":"A","fallback_content":"151.115.80.213","health_check_string":"Tardigram"},{"zone_id":"faec4689c05f781fb7f3c78ee7210b95","record_name":"www.tardigram.com","fallback_type":"A","fallback_content":"151.115.80.213","health_check_string":"Tardigram"},{"zone_id":"faec4689c05f781fb7f3c78ee7210b95","record_name":"status.tardigram.com","fallback_type":"A","fallback_content":"151.115.80.213"},{"zone_id":"d389c9eb9447d54287732dae99c19df2","record_name":"elpapeo.com","fallback_type":"A","fallback_content":"151.115.80.213","health_check_string":"ElPapeo"},{"zone_id":"d389c9eb9447d54287732dae99c19df2","record_name":"status.elpapeo.com","fallback_type":"A","fallback_content":"151.115.80.213"},{"zone_id":"92186120796fc3abe88aebbd8bf56633","record_name":"auth.level5.dev","fallback_type":"A","fallback_content":"151.115.80.213","health_check_string":"auth.level5.dev","origin_domain":"origin.tardigram.com"}]
   name: cloudflare-switchover-config
 

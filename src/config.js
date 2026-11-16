@@ -18,6 +18,12 @@ function loadConfig() {
     throw new Error('DOMAIN_RECORDS must be a non-empty array');
   }
 
+  // Registro "normal" (el tunel de Cloudflare). Hace falta si el servicio
+  // arranca en mitad de un partido: el DNS ya apunta al fallback y no hay
+  // original en memoria que restaurar. Se puede fijar por registro
+  // (normal_content/normal_type/normal_proxied) o para todos con NORMAL_CONTENT.
+  const normalContent = process.env.NORMAL_CONTENT || null;
+
   for (const rec of domainRecords) {
     if (!rec.zone_id || !rec.record_name) {
       throw new Error('Each DOMAIN_RECORDS entry must have zone_id, record_name');
@@ -30,6 +36,11 @@ function loadConfig() {
     }
     if (rec.origin_domain !== undefined && typeof rec.origin_domain !== 'string') {
       throw new Error('origin_domain must be a string if provided');
+    }
+    if (!rec.normal_content && normalContent) rec.normal_content = normalContent;
+    if (rec.normal_content) {
+      rec.normal_type = rec.normal_type || 'CNAME';
+      rec.normal_proxied = rec.normal_proxied !== undefined ? rec.normal_proxied : true;
     }
   }
 

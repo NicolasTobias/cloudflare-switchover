@@ -93,6 +93,11 @@ class Switcher {
       const rec = cfRecords[0];
       const isFallback = rec.type === domainRec.fallback_type
         && rec.content === domainRec.fallback_content;
+      // Arrancando en fallback no hay original que leer: se usa el normal
+      // configurado. Sin el, al acabar el partido el DNS se quedaba en el VPS.
+      const known = isFallback && domainRec.normal_content
+        ? { type: domainRec.normal_type, content: domainRec.normal_content, proxied: domainRec.normal_proxied }
+        : null;
 
       this.records.push({
         zoneId: domainRec.zone_id,
@@ -101,9 +106,9 @@ class Switcher {
         currentType: rec.type,
         currentContent: rec.content,
         currentProxied: rec.proxied,
-        originalType: isFallback ? null : rec.type,
-        originalContent: isFallback ? null : rec.content,
-        originalProxied: isFallback ? null : rec.proxied,
+        originalType: isFallback ? (known?.type ?? null) : rec.type,
+        originalContent: isFallback ? (known?.content ?? null) : rec.content,
+        originalProxied: isFallback ? (known?.proxied ?? null) : rec.proxied,
         fallbackType: domainRec.fallback_type,
         fallbackContent: domainRec.fallback_content,
         healthCheckString: domainRec.health_check_string || null,
@@ -112,14 +117,16 @@ class Switcher {
     }
 
     // If any record is currently in fallback, start in fallback state
-    const anyFallback = this.records.some(r => r.originalType === null);
+    const anyFallback = this.records.some(r => r.currentType === r.fallbackType
+      && r.currentContent === r.fallbackContent);
     if (anyFallback) {
       this.state = STATES.FALLBACK;
       this.addEvent('state_change', { from: STATES.NORMAL, to: STATES.FALLBACK, message: 'Init detected fallback state' });
       this.log.warn({
         records: this.records
-          .filter(r => r.originalType === null)
+          .filter(r => r.currentType === r.fallbackType && r.currentContent === r.fallbackContent)
           .map(r => r.recordName),
+        sinNormal: this.records.filter(r => !r.originalType).map(r => r.recordName),
       }, 'init_football_state_detected');
     }
 
@@ -343,9 +350,11 @@ class Switcher {
   }
 
   async _restoreOriginal() {
+    const sinRestaurar = [];
     for (const rec of this.records) {
       if (!rec.originalType || !rec.originalContent) {
-        this.log.warn({ recordName: rec.recordName }, 'no_original_state_to_restore');
+        this.log.error({ recordName: rec.recordName }, 'no_original_state_to_restore');
+        sinRestaurar.push(rec.recordName);
         continue;
       }
 
@@ -374,6 +383,14 @@ class Switcher {
         throw err;
       }
     }
+    if (sinRestaurar.length) {
+      // El DNS se queda en el VPS sin partido: Anubis para todo el mundo y sin
+      // Cloudflare delante. Que lo sepa alguien en vez de darlo por restaurado.
+      await notify(this.config,
+        `DNS sin restaurar a Cloudflare (falta el registro normal): ${sinRestaurar.join(', ')}`,
+        this.log, { alertname: 'SwitchoverRestauracionIncompleta', severity: 'warning' });
+    }
+    return sinRestaurar;
   }
 
   async _verifyHealth() {

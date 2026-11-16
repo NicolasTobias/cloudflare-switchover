@@ -116,6 +116,41 @@ describe('Switcher', () => {
       assert.equal(switcher.records[0].originalType, null);
     });
 
+    it('uses the configured normal record when starting in fallback', async () => {
+      const cfRecords = [
+        { id: 'rec1', name: 'tardigram.com', type: 'A', proxied: false, content: '5.161.1.1' },
+      ];
+      const cf = createMockCf(cfRecords);
+      const config = createConfig();
+      config.domainRecords[0].normal_type = 'CNAME';
+      config.domainRecords[0].normal_content = 'xxx.cfargotunnel.com';
+      config.domainRecords[0].normal_proxied = true;
+      const switcher = new Switcher(config, cf, mockLog);
+
+      await switcher.init();
+
+      assert.equal(switcher.state, STATES.FALLBACK);
+      assert.equal(switcher.records[0].originalType, 'CNAME');
+      assert.equal(switcher.records[0].originalContent, 'xxx.cfargotunnel.com');
+      assert.equal(switcher.records[0].originalProxied, true);
+
+      const missing = await switcher._restoreOriginal();
+      assert.deepEqual(missing, []);
+      assert.equal(switcher.records[0].currentContent, 'xxx.cfargotunnel.com');
+    });
+
+    it('reports records it cannot restore', async () => {
+      const cfRecords = [
+        { id: 'rec1', name: 'tardigram.com', type: 'A', proxied: false, content: '5.161.1.1' },
+      ];
+      const cf = createMockCf(cfRecords);
+      const switcher = new Switcher(createConfig(), cf, mockLog);
+      await switcher.init();
+
+      const missing = await switcher._restoreOriginal();
+      assert.deepEqual(missing, ['tardigram.com']);
+    });
+
     it('throws if no records found', async () => {
       const cf = createMockCf([]);
       const switcher = new Switcher(createConfig(), cf, mockLog);

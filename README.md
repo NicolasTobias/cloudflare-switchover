@@ -80,6 +80,7 @@ cp .env.example .env
 | `FOOTBALL_THRESHOLD` | No | `0.5` | Proporción mínima de ISPs con bloqueo para activar el switch |
 | `HOME_ISP` | No | — | ISP de la conexión de casa tal como la nombra hayahora (`Orange`, `Movistar`...). Si bloquea alguna IP a la que resuelven nuestros dominios, cuenta como bloqueo aunque no haya mayoría |
 | `ALERTMANAGER_URL` | No | — | Alertmanager de Grafana Cloud (`https://alertmanager-prod-eu-west-2.grafana.net`). Sin él no se avisa |
+| `NORMAL_CONTENT` | Recomendado | — | Registro normal (`xxx.cfargotunnel.com`, CNAME con proxy). Si el servicio arranca durante un partido, el DNS ya está en el fallback y no hay original que leer: sin esto, al acabar el partido no puede restaurar y avisa con `SwitchoverRestauracionIncompleta`. Por registro: `normal_content`, `normal_type`, `normal_proxied` en `DOMAIN_RECORDS` |
 | `ALERTMANAGER_USER` | No | — | ID de la instancia del Alertmanager (usuario de basic auth) |
 | `ALERTMANAGER_TOKEN` | No | — | Token de Cloud Access Policy con `alerts:write` |
 | `LOG_LEVEL` | No | `info` | Nivel de log de Pino (`debug`, `info`, `warn`, `error`) |
